@@ -1,35 +1,23 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: ticket-tracker-test
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ticket-tracker-secrets
-  namespace: ticket-tracker-test
-type: Opaque
-stringData:
-  POSTGRES_DB: tickettracker
-  POSTGRES_USER: tickettracker
-  POSTGRES_PASSWORD: change-me-before-apply
-  DATABASE_URL: postgresql://tickettracker:change-me-before-apply@ticket-tracker-postgres:5432/tickettracker?schema=public
+  name: irctc-travel-planner
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ticket-tracker-config
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-config
+  namespace: irctc-travel-planner
 data:
-  NEXT_PUBLIC_APP_URL: https://ticket-tracker.k8s.harish2k01.xyz
+  NEXT_PUBLIC_APP_URL: https://irctc-travel-planner.k8s.harish2k01.xyz
   NEXT_PUBLIC_USE_DEMO_DATA: "false"
-  OBJECT_STORAGE_BUCKET: ticket-tracker-test-attachments
+  OBJECT_STORAGE_BUCKET: irctc-travel-planner-attachments
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: ticket-tracker-postgres-data
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-postgres-data
+  namespace: irctc-travel-planner
 spec:
   accessModes:
     - ReadWriteOnce
@@ -40,17 +28,17 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ticket-tracker-postgres
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-postgres
+  namespace: irctc-travel-planner
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ticket-tracker-postgres
+      app: irctc-travel-planner-postgres
   template:
     metadata:
       labels:
-        app: ticket-tracker-postgres
+        app: irctc-travel-planner-postgres
     spec:
       containers:
         - name: postgres
@@ -59,15 +47,15 @@ spec:
             - containerPort: 5432
           envFrom:
             - secretRef:
-                name: ticket-tracker-secrets
+                name: irctc-travel-planner-secrets
           readinessProbe:
             exec:
               command:
                 - pg_isready
                 - -U
-                - tickettracker
+                - irctc
                 - -d
-                - tickettracker
+                - irctc
             initialDelaySeconds: 5
             periodSeconds: 5
           volumeMounts:
@@ -76,16 +64,16 @@ spec:
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: ticket-tracker-postgres-data
+            claimName: irctc-travel-planner-postgres-data
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ticket-tracker-postgres
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-postgres
+  namespace: irctc-travel-planner
 spec:
   selector:
-    app: ticket-tracker-postgres
+    app: irctc-travel-planner-postgres
   ports:
     - name: postgres
       port: 5432
@@ -94,8 +82,8 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: ticket-tracker-db-setup
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-db-setup
+  namespace: irctc-travel-planner
 spec:
   backoffLimit: 3
   template:
@@ -106,20 +94,20 @@ spec:
           image: postgres:18-alpine
           envFrom:
             - secretRef:
-                name: ticket-tracker-secrets
+                name: irctc-travel-planner-secrets
           command:
             - sh
             - -c
-            - until pg_isready -h ticket-tracker-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done
+            - until pg_isready -h irctc-travel-planner-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done
       containers:
         - name: db-setup
           image: ghcr.io/harish2k01/irctc-travel-planner:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           envFrom:
             - secretRef:
-                name: ticket-tracker-secrets
+                name: irctc-travel-planner-secrets
             - configMapRef:
-                name: ticket-tracker-config
+                name: irctc-travel-planner-config
           env:
             - name: INCLUDE_DEMO_JOURNEYS
               value: "false"
@@ -131,29 +119,29 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ticket-tracker-web
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-web
+  namespace: irctc-travel-planner
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ticket-tracker-web
+      app: irctc-travel-planner-web
   template:
     metadata:
       labels:
-        app: ticket-tracker-web
+        app: irctc-travel-planner-web
     spec:
       containers:
         - name: web
           image: ghcr.io/harish2k01/irctc-travel-planner:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           envFrom:
             - secretRef:
-                name: ticket-tracker-secrets
+                name: irctc-travel-planner-secrets
             - configMapRef:
-                name: ticket-tracker-config
+                name: irctc-travel-planner-config
           readinessProbe:
             httpGet:
               path: /
@@ -177,11 +165,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ticket-tracker-web
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-web
+  namespace: irctc-travel-planner
 spec:
   selector:
-    app: ticket-tracker-web
+    app: irctc-travel-planner-web
   ports:
     - name: http
       port: 80
@@ -190,20 +178,20 @@ spec:
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: ticket-tracker-web
-  namespace: ticket-tracker-test
+  name: irctc-travel-planner-web
+  namespace: irctc-travel-planner
 spec:
   parentRefs:
     - name: traefik-gateway
       namespace: traefik
       sectionName: websecure
   hostnames:
-    - ticket-tracker.k8s.harish2k01.xyz
+    - irctc-travel-planner.k8s.harish2k01.xyz
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: ticket-tracker-web
+        - name: irctc-travel-planner-web
           port: 80

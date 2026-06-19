@@ -73,15 +73,26 @@ Base manifests are in `k8s/manifests.yaml` and include:
 
 Update image names, hostnames, and secret values before applying.
 
-The test manifest in `k8s/ticket-tracker-test.yaml` creates:
+The test manifest in `k8s/irctc-travel-planner.yaml` creates:
 
-- Namespace `ticket-tracker-test`
+- Namespace `irctc-travel-planner`
 - PostgreSQL
 - Schema/seed setup job
 - Web deployment and service
-- Gateway API `HTTPRoute` for `ticket-tracker.k8s.harish2k01.xyz` through `traefik/traefik-gateway`
+- Gateway API `HTTPRoute` for `irctc-travel-planner.k8s.harish2k01.xyz` through `traefik/traefik-gateway`
 
-Before applying it from a public repository, replace the placeholder `change-me-before-apply` values in the Kubernetes `Secret`. The manifest image is set to:
+Create the database secret in the cluster before applying the manifest. Do not commit real secret values to this public repository.
+
+```bash
+kubectl create namespace irctc-travel-planner
+kubectl -n irctc-travel-planner create secret generic irctc-travel-planner-secrets \
+  --from-literal=POSTGRES_DB=irctc \
+  --from-literal=POSTGRES_USER=irctc \
+  --from-literal=POSTGRES_PASSWORD='<strong-password>' \
+  --from-literal=DATABASE_URL='postgresql://irctc:<strong-password>@irctc-travel-planner-postgres:5432/irctc?schema=public'
+```
+
+The manifest image is set to:
 
 ```text
 ghcr.io/harish2k01/irctc-travel-planner:latest
@@ -92,14 +103,14 @@ If your public GitHub repo name differs, update the image to `ghcr.io/<owner>/<r
 Apply when the cluster is reachable:
 
 ```bash
-kubectl apply -f k8s/ticket-tracker-test.yaml
+kubectl apply -f k8s/irctc-travel-planner.yaml
 ```
 
 ## GitHub Releases and Container Publishing
 
 The workflow in `.github/workflows/build.yaml` builds the Docker image for pull requests without pushing it.
 
-The workflow in `.github/workflows/release.yaml` runs when a pull request is merged into `main`. It computes the next semantic version from conventional commits, creates a GitHub Release, and publishes these image tags to GitHub Container Registry:
+The workflow in `.github/workflows/release.yaml` runs when a pull request is merged into `main`, when `main` is pushed directly, or when manually dispatched. It computes the next semantic version from conventional commits, creates a GitHub Release, and publishes these image tags to GitHub Container Registry:
 
 ```text
 ghcr.io/<owner>/<repo>:<major>.<minor>.<patch>
