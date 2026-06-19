@@ -1,36 +1,160 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IRCTC Travel Planner
 
-## Getting Started
+A calendar-first commute planner for working professionals who travel regularly by Indian Railways. The app helps users plan journeys, track booking windows, manage holidays/leave, and monitor travel spending.
 
-First, run the development server:
+This is not an IRCTC booking platform. It does not automate IRCTC login, CAPTCHA solving, ticket purchase, or payment flows.
+
+## Stack
+
+- Next.js App Router with React and TypeScript
+- Tailwind CSS with shadcn-style local components
+- FullCalendar for unified travel/reminder/holiday calendar views
+- Recharts for analytics
+- PostgreSQL with Prisma ORM
+- zod-validated API handlers
+- Docker and Kubernetes deployment assets
+
+## Quick Start
+
+```bash
+npm install
+npm run prisma:generate
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+The app starts with no journeys when `DATABASE_URL` is not set. Set `NEXT_PUBLIC_USE_DEMO_DATA=true` if you want to show bundled demo journeys locally.
+
+## Run With PostgreSQL
+
+```bash
+copy .env.example .env
+docker compose up -d postgres
+npm run prisma:migrate
+npm run prisma:seed
+npm run dev
+```
+
+## Scripts
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run start
+npm run lint
+npm run test
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Docker
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+docker compose up --build
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The Compose file starts PostgreSQL and the Next.js app. Run migrations before production rollout:
 
-## Learn More
+```bash
+npm run prisma:migrate
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Kubernetes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Base manifests are in `k8s/manifests.yaml` and include:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Secret for `DATABASE_URL`
+- ConfigMap for app configuration
+- Deployment with readiness/liveness probes
+- Service
+- Ingress
 
-## Deploy on Vercel
+Update image names, hostnames, and secret values before applying.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The test manifest in `k8s/ticket-tracker-test.yaml` creates:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Namespace `ticket-tracker-test`
+- PostgreSQL
+- Schema/seed setup job
+- Web deployment and service
+- Gateway API `HTTPRoute` for `ticket-tracker.k8s.harish2k01.xyz` through `traefik/traefik-gateway`
+
+Before applying it from a public repository, replace the placeholder `change-me-before-apply` values in the Kubernetes `Secret`. The manifest image is set to:
+
+```text
+ghcr.io/harish2k01/irctc-travel-planner:latest
+```
+
+If your public GitHub repo name differs, update the image to `ghcr.io/<owner>/<repo>:latest` or pin a released semantic version such as `ghcr.io/<owner>/<repo>:1.2.3`.
+
+Apply when the cluster is reachable:
+
+```bash
+kubectl apply -f k8s/ticket-tracker-test.yaml
+```
+
+## GitHub Releases and Container Publishing
+
+The workflow in `.github/workflows/build.yaml` builds the Docker image for pull requests without pushing it.
+
+The workflow in `.github/workflows/release.yaml` runs when a pull request is merged into `main`. It computes the next semantic version from conventional commits, creates a GitHub Release, and publishes these image tags to GitHub Container Registry:
+
+```text
+ghcr.io/<owner>/<repo>:<major>.<minor>.<patch>
+ghcr.io/<owner>/<repo>:<major>.<minor>
+ghcr.io/<owner>/<repo>:<major>
+ghcr.io/<owner>/<repo>:latest
+```
+
+Version bump rules:
+
+- `feat:` creates a minor release.
+- `fix:` and `revert:` create a patch release.
+- `perf:` is listed under performance and creates a patch release.
+- `type!:` or `BREAKING CHANGE:` creates a major release.
+
+## Project Structure
+
+```text
+src/app                  Next.js routes and API handlers
+src/components           Main travel planner UI
+src/lib                  Domain types, seed data, date logic, validation, Prisma client
+prisma                   Database schema and seed script
+docs                     IA, user flows, schema notes, API contracts, wireframes
+k8s                      Kubernetes manifests
+```
+
+## Domain Rules
+
+- Booking open date is always `travelDate - 60 days`.
+- Reminders are generated for:
+  - 7 days before booking opens
+  - 1 day before booking opens
+  - booking-open day
+- Journey states:
+  - Planned
+  - Booking Window Open
+  - Booked
+  - Waitlisted
+  - RAC
+  - Confirmed
+  - Cancelled
+  - Completed
+
+## Planning Artifacts
+
+- [Information architecture](docs/information-architecture.md)
+- [User flows](docs/user-flows.md)
+- [Database schema notes](docs/database-schema.md)
+- [API contracts](docs/api-contracts.md)
+- [Low-fidelity wireframes](docs/wireframes.md)
+
+## Next Iterations
+
+- Add real authentication with email/password and Google Sign-In.
+- Add notification workers for email, Web Push, and in-app delivery.
+- Add attachment upload to object storage.
+- Add CSV export and holiday CSV/ICS import processors.
+- Add optional IRCTC deep links without automation.

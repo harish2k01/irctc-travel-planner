@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: irctc-travel-planner-secrets
+type: Opaque
+stringData:
+  DATABASE_URL: postgresql://commuterail:change-me-before-apply@postgres:5432/commuterail?schema=public
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: irctc-travel-planner-config
+data:
+  NEXT_PUBLIC_APP_URL: https://travel-planner.example.com
+  OBJECT_STORAGE_BUCKET: commuterail-attachments
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: irctc-travel-planner
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: irctc-travel-planner
+  template:
+    metadata:
+      labels:
+        app: irctc-travel-planner
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/OWNER/REPOSITORY:main
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: irctc-travel-planner-secrets
+            - configMapRef:
+                name: irctc-travel-planner-config
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: irctc-travel-planner
+spec:
+  selector:
+    app: irctc-travel-planner
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: irctc-travel-planner
+spec:
+  rules:
+    - host: travel-planner.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: irctc-travel-planner
+                port:
+                  number: 80

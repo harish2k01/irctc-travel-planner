@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum JourneyStatus {
+  PLANNED
+  BOOKING_WINDOW_OPEN
+  BOOKED
+  WAITLISTED
+  RAC
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum TravelDirection {
+  HOME_TO_OFFICE
+  OFFICE_TO_HOME
+}
+
+enum RecurrenceType {
+  ONE_TIME
+  WEEKLY
+  CUSTOM
+}
+
+enum ReminderType {
+  SEVEN_DAYS_BEFORE
+  ONE_DAY_BEFORE
+  BOOKING_OPEN
+}
+
+enum HolidayType {
+  NATIONAL
+  STATE
+  COMPANY
+  PERSONAL_LEAVE
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  READ
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  name         String?
+  passwordHash String?
+  googleId     String?        @unique
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  routes       Route[]
+  journeys     Journey[]
+  holidays     Holiday[]
+  leaves       LeaveRequest[]
+  notifications Notification[]
+  attachments  Attachment[]
+}
+
+model Route {
+  id              String    @id @default(cuid())
+  userId          String
+  originCode      String
+  originName      String
+  destinationCode String
+  destinationName String
+  createdAt       DateTime  @default(now())
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trains          Train[]
+  journeys        Journey[]
+
+  @@index([userId])
+  @@index([originCode, destinationCode])
+}
+
+model Train {
+  id               String    @id @default(cuid())
+  routeId          String
+  trainNumber      String
+  trainName        String
+  preferredClasses String[]
+  createdAt        DateTime  @default(now())
+  route            Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  journeys         Journey[]
+
+  @@index([trainNumber])
+  @@index([routeId])
+}
+
+model Journey {
+  id               String            @id @default(cuid())
+  userId           String
+  routeId          String
+  trainId          String
+  travelDate       DateTime
+  bookingOpenDate  DateTime
+  preferredClass   String
+  direction        TravelDirection
+  recurrence       RecurrenceType
+  status           JourneyStatus     @default(PLANNED)
+  notes            String?
+  pnr              String?
+  coach            String?
+  seat             String?
+  bookingDate      DateTime?
+  farePaid         Decimal?          @db.Decimal(10, 2)
+  waitlistPosition Int?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  route            Route             @relation(fields: [routeId], references: [id])
+  train            Train             @relation(fields: [trainId], references: [id])
+  reminders        JourneyReminder[]
+  attachments      Attachment[]
+
+  @@index([userId, travelDate])
+  @@index([userId, bookingOpenDate])
+  @@index([status])
+}
+
+model JourneyReminder {
+  id        String       @id @default(cuid())
+  journeyId String
+  type      ReminderType
+  dueAt     DateTime
+  sentAt    DateTime?
+  createdAt DateTime     @default(now())
+  journey   Journey      @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  @@unique([journeyId, type])
+  @@index([dueAt])
+}
+
+model Holiday {
+  id        String      @id @default(cuid())
+  userId    String?
+  name      String
+  date      DateTime
+  type      HolidayType
+  region    String?
+  createdAt DateTime    @default(now())
+  user      User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([type])
+}
+
+model LeaveRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startDate])
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  channel   NotificationChannel
+  title     String
+  body      String
+  status    NotificationStatus  @default(QUEUED)
+  scheduledAt DateTime
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, scheduledAt])
+  @@index([status])
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  userId    String
+  journeyId String
+  fileName  String
+  mimeType  String
+  objectKey String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  journey   Journey  @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+
+  @@index([journeyId])
+  @@index([userId])
+}

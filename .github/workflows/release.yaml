@@ -1,0 +1,249 @@
+name: Release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: read
+
+concurrency:
+  group: semantic-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.semantic.outputs.tag }}
+      version: ${{ steps.semantic.outputs.version }}
+    steps:
+      - name: Checkout merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Compute semantic version and release notes
+        id: semantic
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --force --tags
+
+          latest_tag="$(
+            git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname |
+              grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' |
+              head -n 1 || true
+          )"
+
+          if [ -n "$latest_tag" ]; then
+            range="${latest_tag}..HEAD"
+            base_version="${latest_tag#v}"
+          else
+            range="HEAD"
+            base_version="0.0.0"
+          fi
+
+          git log --no-merges --format='%H%x1f%s%x1f%b%x1e' "$range" > "$RUNNER_TEMP/commits.log"
+
+          BASE_VERSION="$base_version" LATEST_TAG="$latest_tag" python3 <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          commits_path = Path(os.environ["RUNNER_TEMP"]) / "commits.log"
+          notes_path = Path(os.environ["RUNNER_TEMP"]) / "release-notes.md"
+          output_path = Path(os.environ["GITHUB_OUTPUT"])
+          base_version = os.environ["BASE_VERSION"]
+          latest_tag = os.environ.get("LATEST_TAG", "")
+
+          bump_rank = {"patch": 1, "minor": 2, "major": 3}
+          bump = "patch"
+          groups = {
+              "major": [],
+              "feat": [],
+              "fix": [],
+              "perf": [],
+              "docs": [],
+              "maintenance": [],
+          }
+
+          conventional = re.compile(
+              r"^(?P<type>[a-zA-Z]+)(?:\([^)]+\))?(?P<breaking>!)?:\s+(?P<description>.+)$"
+          )
+
+          raw = commits_path.read_text(encoding="utf-8")
+          records = [record for record in raw.split("\x1e") if record.strip()]
+
+          for record in records:
+              parts = record.strip("\n").split("\x1f")
+              if len(parts) < 3:
+                  continue
+
+              sha, subject, body = parts[0], parts[1].strip(), parts[2]
+              match = conventional.match(subject)
+              commit_type = match.group("type").lower() if match else ""
+              description = match.group("description") if match else subject
+              is_breaking = bool(match and match.group("breaking")) or bool(
+                  re.search(r"(^|\n)BREAKING[ -]CHANGE:", body)
+              )
+
+              if is_breaking:
+                  bump = "major"
+                  groups["major"].append((sha, description))
+              elif commit_type == "feat":
+                  if bump_rank[bump] < bump_rank["minor"]:
+                      bump = "minor"
+                  groups["feat"].append((sha, description))
+              elif commit_type in {"fix", "revert"}:
+                  groups["fix"].append((sha, description))
+              elif commit_type == "perf":
+                  groups["perf"].append((sha, description))
+              elif commit_type == "docs":
+                  groups["docs"].append((sha, description))
+              else:
+                  groups["maintenance"].append((sha, description))
+
+          if not records:
+              pr_number = os.environ.get("PR_NUMBER", "")
+              pr_title = os.environ.get("PR_TITLE", "Merged PR")
+              description = pr_title
+              if pr_number:
+                  description = f"{description} (#{pr_number})"
+              groups["maintenance"].append(("unknown", description))
+
+          major, minor, patch = [int(part) for part in base_version.split(".")]
+          if not latest_tag and bump != "major":
+              major = 0
+              minor = 1
+              patch = 0
+          elif bump == "major":
+              major += 1
+              minor = 0
+              patch = 0
+          elif bump == "minor":
+              minor += 1
+              patch = 0
+          else:
+              patch += 1
+
+          next_tag = f"v{major}.{minor}.{patch}"
+          labels = [
+              ("major", "Breaking Changes"),
+              ("feat", "Features"),
+              ("fix", "Fixes"),
+              ("perf", "Performance"),
+              ("docs", "Documentation"),
+              ("maintenance", "Maintenance"),
+          ]
+
+          lines = [f"## {next_tag}", ""]
+          if latest_tag:
+              lines.extend([f"Changes since `{latest_tag}`.", ""])
+          else:
+              lines.extend(["Initial release.", ""])
+          lines.extend([f"Semantic bump: `{bump}`", ""])
+
+          for key, title in labels:
+              items = groups[key]
+              if not items:
+                  continue
+              lines.extend([f"### {title}", ""])
+              for sha, description in items:
+                  lines.append(f"- {description} ({sha[:7]})")
+              lines.append("")
+
+          notes_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+          with output_path.open("a", encoding="utf-8") as output:
+              output.write(f"tag={next_tag}\n")
+              output.write(f"version={next_tag[1:]}\n")
+              output.write(f"bump={bump}\n")
+          PY
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+
+      - name: Create GitHub release
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ steps.semantic.outputs.tag }}
+          TARGET_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require("fs");
+            const body = fs.readFileSync(
+              `${process.env.RUNNER_TEMP}/release-notes.md`,
+              "utf8",
+            );
+
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: process.env.TAG,
+              target_commitish: process.env.TARGET_SHA,
+              name: process.env.TAG,
+              body,
+            });
+
+  build:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare image tags
+        id: tags
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          version="${{ needs.release.outputs.version }}"
+          major="${version%%.*}"
+          minor_patch="${version#*.}"
+          minor="${minor_patch%%.*}"
+
+          {
+            echo "tags<<EOF"
+            echo "${image}:${version}"
+            echo "${image}:${major}.${minor}"
+            echo "${image}:${major}"
+            echo "${image}:latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Smart IRCTC travel planner
