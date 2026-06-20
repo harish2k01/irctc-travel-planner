@@ -63,7 +63,7 @@ npm run prisma:migrate
 
 ## PNR Sync
 
-PNR sync is provider-backed. The app does not scrape IRCTC or automate IRCTC login/CAPTCHA flows. Configure a licensed PNR provider endpoint that accepts a `pnr` query parameter and returns fields such as `status`, `coach`, `seat`, `farePaid`, `waitlistPosition`, and `bookingDate`.
+PNR sync is provider-backed. The app does not scrape IRCTC or automate IRCTC login/CAPTCHA flows. Configure a licensed PNR provider endpoint that accepts a `pnr` query parameter and returns fields such as `trainNumber`, `trainName`, `travelDate`, `preferredClass`, `sourceCode`, `sourceName`, `destinationCode`, `destinationName`, `status`, `coach`, `seat`, `farePaid`, `waitlistPosition`, and `bookingDate`.
 
 ```bash
 PNR_PROVIDER_URL="https://provider.example.com/pnr"
