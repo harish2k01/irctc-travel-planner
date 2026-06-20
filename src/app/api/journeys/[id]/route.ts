@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { updateJourneyStatusSchema } from "@/lib/api-schemas";
+import { requireUser } from "@/lib/auth";
 import { buildJourneyReminders, calculateBookingOpenDate } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 
@@ -12,6 +13,7 @@ function toDate(dateOnly?: string) {
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const user = await requireUser();
   const { id } = await params;
   const parsed = updateJourneyStatusSchema.safeParse(await request.json());
 
@@ -26,6 +28,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       data: { id, ...parsed.data, ...(bookingOpenDate ? { bookingOpenDate } : {}) },
       source: "preview",
     });
+  }
+
+  const existing = await prisma.journey.findFirst({ where: { id, userId: user.id } });
+
+  if (!existing) {
+    return NextResponse.json({ error: "Journey not found." }, { status: 404 });
   }
 
   const data = await prisma.$transaction(async (tx) => {
@@ -67,12 +75,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const user = await requireUser();
   const { id } = await params;
 
   if (!hasDatabase()) {
     return NextResponse.json({ data: { id }, source: "preview" });
   }
 
-  await prisma.journey.delete({ where: { id } });
+  await prisma.journey.deleteMany({ where: { id, userId: user.id } });
   return NextResponse.json({ data: { id }, source: "database" });
 }

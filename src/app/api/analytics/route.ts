@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-
-const DEMO_USER_ID = "demo-user";
 
 function hasDatabase() {
   return Boolean(process.env.DATABASE_URL);
@@ -24,10 +23,8 @@ export async function GET() {
     });
   }
 
-  const journeys = await prisma.journey.findMany({
-    where: { userId: DEMO_USER_ID },
-    orderBy: { travelDate: "asc" },
-  });
+  const user = await requireUser();
+  const journeys = await prisma.journey.findMany({ where: { userId: user.id }, orderBy: { travelDate: "asc" } });
   const totalTrips = journeys.length;
   const bookedTrips = journeys.filter((journey) =>
     ["BOOKED", "CONFIRMED", "RAC", "WAITLISTED", "COMPLETED"].includes(journey.status),

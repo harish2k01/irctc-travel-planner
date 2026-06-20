@@ -1,40 +1,33 @@
+import { AuthScreen } from "@/components/auth-screen";
 import { TravelPlannerApp } from "@/components/travel-planner-app";
+import { getCurrentUser } from "@/lib/auth";
 import { toDateOnly } from "@/lib/dates";
 import { prisma } from "@/lib/db";
+import { getAppSettings } from "@/lib/settings";
 import type { Holiday, Journey, Route, Train } from "@/lib/types";
-import { holidays as seedHolidays, journeys as seedJourneys, routes as seedRoutes, trains as seedTrains } from "@/lib/seed-data";
-
-const DEMO_USER_ID = "demo-user";
 
 function dateOnly(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
-async function loadInitialData(): Promise<{
+type InitialData = {
   journeys: Journey[];
   routes: Route[];
   trains: Train[];
   holidays: Holiday[];
-}> {
-  if (!process.env.DATABASE_URL) {
-    return {
-      journeys: process.env.NEXT_PUBLIC_USE_DEMO_DATA === "true" ? seedJourneys : [],
-      routes: seedRoutes,
-      trains: seedTrains,
-      holidays: process.env.NEXT_PUBLIC_USE_DEMO_DATA === "true" ? seedHolidays : [],
-    };
-  }
+};
 
+async function loadInitialData(userId: string): Promise<InitialData> {
   const [dbJourneys, dbRoutes, dbTrains, dbHolidays] = await Promise.all([
     prisma.journey.findMany({
-      where: { userId: DEMO_USER_ID },
+      where: { userId },
       include: { route: true },
       orderBy: { travelDate: "asc" },
     }),
-    prisma.route.findMany({ where: { userId: DEMO_USER_ID }, orderBy: { originCode: "asc" } }),
-    prisma.train.findMany({ orderBy: { trainNumber: "asc" } }),
+    prisma.route.findMany({ where: { userId }, orderBy: { originCode: "asc" } }),
+    prisma.train.findMany({ where: { route: { userId } }, orderBy: { trainNumber: "asc" } }),
     prisma.holiday.findMany({
-      where: { OR: [{ userId: DEMO_USER_ID }, { userId: null }] },
+      where: { userId },
       orderBy: { date: "asc" },
     }),
   ]);
@@ -87,10 +80,55 @@ async function loadInitialData(): Promise<{
 }
 
 export default async function Home() {
-  const { journeys, routes, trains, holidays } = await loadInitialData();
+  if (!process.env.DATABASE_URL) {
+    return <AuthScreen mode="missingDatabase" allowSignups={false} />;
+  }
+
+  const [currentUser, userCount, settings] = await Promise.all([
+    getCurrentUser(),
+    prisma.user.count(),
+    getAppSettings(),
+  ]);
+
+  if (userCount === 0) {
+    return <AuthScreen mode="firstSignup" allowSignups />;
+  }
+
+  if (!currentUser) {
+    return <AuthScreen mode="login" allowSignups={settings.allowSignups} />;
+  }
+
+  if (currentUser.mustResetPassword) {
+    return <AuthScreen mode="resetPassword" allowSignups={settings.allowSignups} />;
+  }
+
+  const [{ journeys, routes, trains, holidays }, users] = await Promise.all([
+    loadInitialData(currentUser.id),
+    currentUser.role === "ADMIN"
+      ? prisma.user.findMany({
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            isActive: true,
+            mustResetPassword: true,
+            createdAt: true,
+          },
+        })
+      : [],
+  ]);
 
   return (
     <TravelPlannerApp
+      currentUser={currentUser}
+      initialSettings={{ allowSignups: settings.allowSignups }}
+      initialUsers={users.map((user) => ({
+        ...user,
+        name: user.name ?? undefined,
+        createdAt: user.createdAt.toISOString(),
+      }))}
       initialJourneys={journeys}
       routes={routes}
       trains={trains}

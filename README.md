@@ -24,7 +24,9 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The app starts with no journeys or holidays when `DATABASE_URL` is not set. Set `NEXT_PUBLIC_USE_DEMO_DATA=true` if you want to show bundled demo journeys and holidays locally.
+The app starts with a first-admin signup screen when PostgreSQL is configured and no users exist.
+
+Admins can disable public signups from Settings, create users, edit user access, and delete users. When SMTP is configured, newly created users receive a temporary password by email and are forced to reset it on first login.
 
 ## Run With PostgreSQL
 
@@ -100,8 +102,11 @@ kubectl -n irctc-travel-planner create secret generic irctc-travel-planner-secre
   --from-literal=POSTGRES_DB=irctc \
   --from-literal=POSTGRES_USER=irctc \
   --from-literal=POSTGRES_PASSWORD='<strong-password>' \
-  --from-literal=DATABASE_URL='postgresql://irctc:<strong-password>@irctc-travel-planner-postgres:5432/irctc?schema=public'
+  --from-literal=DATABASE_URL='postgresql://irctc:<strong-password>@irctc-travel-planner-postgres:5432/irctc?schema=public' \
+  --from-literal=SMTP_URL='smtp://user:<smtp-password>@mail.example.com:587'
 ```
+
+If `SMTP_URL` is omitted, admin-created users still get a temporary password, but it is shown once in the Settings screen instead of being emailed.
 
 The manifest image is set to:
 
@@ -175,7 +180,7 @@ k8s                      Kubernetes manifests
 
 ## Next Iterations
 
-- Add real authentication with email/password and Google Sign-In.
+- Add optional Google Sign-In.
 - Add notification workers for email, Web Push, and in-app delivery.
 - Add attachment upload to object storage.
 - Add CSV export and holiday CSV/ICS import processors.

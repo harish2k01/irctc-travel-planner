@@ -21,6 +21,7 @@ import {
   Pencil,
   Plus,
   Save,
+  Settings,
   Smartphone,
   Train,
   Trash2,
@@ -46,6 +47,14 @@ import { notificationPreferences } from "@/lib/seed-data";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 type Props = {
+  currentUser: {
+    id: string;
+    email: string;
+    name?: string;
+    role: "ADMIN" | "USER";
+  };
+  initialSettings: AppSettingsState;
+  initialUsers: ManagedUser[];
   initialJourneys: Journey[];
   routes: Route[];
   trains: TrainType[];
@@ -60,6 +69,7 @@ const tabs = [
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "holidays", label: "Holidays", icon: MapPin },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
 const statusColumns: JourneyStatus[] = [
@@ -98,15 +108,37 @@ const statusTone: Record<JourneyStatus, string> = {
 type TabId = (typeof tabs)[number]["id"];
 type JourneyPatch = Partial<Omit<Journey, "id" | "bookingOpenDate">>;
 type HolidayDraft = Omit<Holiday, "id">;
+type AppSettingsState = { allowSignups: boolean };
+type ManagedUser = {
+  id: string;
+  email: string;
+  name?: string;
+  role: "ADMIN" | "USER";
+  isActive: boolean;
+  mustResetPassword: boolean;
+  createdAt: string;
+};
 
 function LayoutIcon(props: React.ComponentProps<typeof Home>) {
   return <Home {...props} />;
 }
 
-export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, today }: Props) {
+export function TravelPlannerApp({
+  currentUser,
+  initialSettings,
+  initialUsers,
+  initialJourneys,
+  routes,
+  trains,
+  holidays,
+  today,
+}: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [journeys, setJourneys] = useState(initialJourneys);
   const [holidayItems, setHolidayItems] = useState(holidays);
+  const [settings, setSettings] = useState(initialSettings);
+  const [users, setUsers] = useState(initialUsers);
+  const visibleTabs = currentUser.role === "ADMIN" ? tabs : tabs.filter((tab) => tab.id !== "settings");
 
   const upcomingJourneys = useMemo(
     () => journeys.filter((journey) => isWithinNextDays(journey.travelDate, today, 30)),
@@ -257,6 +289,11 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
     }
   }
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.reload();
+  }
+
   const calendarEvents = [
     ...journeys.map((journey) => ({
       id: `${journey.id}-travel`,
@@ -307,7 +344,7 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
           </div>
           <nav aria-label="Primary">
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {tabs.map((tab) => {
+              {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <button
@@ -326,6 +363,13 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={logout}
+                className="flex h-10 shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                {currentUser.email}
+              </button>
             </div>
           </nav>
         </div>
@@ -368,6 +412,15 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
         )}
         {activeTab === "analytics" && (
           <AnalyticsPanel journeys={journeys} routeById={routeById} />
+        )}
+        {activeTab === "settings" && currentUser.role === "ADMIN" && (
+          <SettingsPanel
+            currentUserId={currentUser.id}
+            settings={settings}
+            users={users}
+            onSettingsChange={setSettings}
+            onUsersChange={setUsers}
+          />
         )}
       </main>
     </div>
@@ -980,6 +1033,166 @@ function CalendarPanel({ events }: { events: Array<{ id: string; title: string; 
         />
       </div>
     </Panel>
+  );
+}
+
+function SettingsPanel({
+  currentUserId,
+  settings,
+  users,
+  onSettingsChange,
+  onUsersChange,
+}: {
+  currentUserId: string;
+  settings: AppSettingsState;
+  users: ManagedUser[];
+  onSettingsChange: (settings: AppSettingsState) => void;
+  onUsersChange: (users: ManagedUser[]) => void;
+}) {
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function toggleSignups(nextValue: boolean) {
+    const response = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allowSignups: nextValue }),
+    });
+    const payload = await response.json();
+
+    if (response.ok) {
+      onSettingsChange({ allowSignups: payload.data.allowSignups });
+    } else {
+      setNotice(payload.error ?? "Could not update settings.");
+    }
+  }
+
+  async function createUser(formData: FormData) {
+    setNotice(null);
+    const response = await fetch("/api/settings/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: optionalString(formData.get("name")),
+        email: String(formData.get("email") ?? ""),
+        role: String(formData.get("role") ?? "USER"),
+      }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setNotice(payload.error ?? "Could not create user.");
+      return;
+    }
+
+    onUsersChange([...users, { ...payload.data, createdAt: new Date().toISOString() }]);
+    setNotice(
+      payload.mail?.sent
+        ? `Temporary password sent to ${payload.data.email}.`
+        : `SMTP is not configured. Temporary password for ${payload.data.email}: ${payload.temporaryPassword}`,
+    );
+  }
+
+  async function updateUser(id: string, patch: Partial<ManagedUser>) {
+    const response = await fetch(`/api/settings/users/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    const payload = await response.json();
+
+    if (response.ok) {
+      onUsersChange(users.map((user) => (user.id === id ? { ...user, ...payload.data, createdAt: user.createdAt } : user)));
+    } else {
+      setNotice(payload.error ?? "Could not update user.");
+    }
+  }
+
+  async function deleteUser(id: string) {
+    const response = await fetch(`/api/settings/users/${id}`, { method: "DELETE" });
+    const payload = await response.json();
+
+    if (response.ok) {
+      onUsersChange(users.filter((user) => user.id !== id));
+    } else {
+      setNotice(payload.error ?? "Could not delete user.");
+    }
+  }
+
+  return (
+    <section className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+      <Panel title="Access settings" action={settings.allowSignups ? "Signups on" : "Signups off"}>
+        <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-800">
+          Allow public signups
+          <input
+            type="checkbox"
+            checked={settings.allowSignups}
+            onChange={(event) => toggleSignups(event.target.checked)}
+            className="h-5 w-5"
+          />
+        </label>
+        {notice && (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+            {notice}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Users" action={`${users.length} total`}>
+        <form action={createUser} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1.2fr_0.7fr_auto]">
+            <input name="name" placeholder="Name" className="h-10 rounded-md border border-slate-300 px-3" />
+            <input required name="email" type="email" placeholder="Email" className="h-10 rounded-md border border-slate-300 px-3" />
+            <select name="role" defaultValue="USER" className="h-10 rounded-md border border-slate-300 px-3">
+              <option value="USER">User</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+            <button className="inline-flex h-10 items-center justify-center rounded-md bg-slate-950 px-3 text-sm font-semibold text-white">
+              Create
+            </button>
+          </div>
+        </form>
+
+        <div className="space-y-3">
+          {users.map((user) => (
+            <div key={user.id} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">{user.name || user.email}</p>
+                <p className="text-sm text-slate-600">{user.email}</p>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  {user.mustResetPassword ? "Password reset required" : "Password set"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={user.role}
+                  onChange={(event) => updateUser(user.id, { role: event.target.value as ManagedUser["role"] })}
+                  className="h-9 rounded-md border border-slate-300 px-2 text-sm"
+                >
+                  <option value="USER">User</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => updateUser(user.id, { isActive: !user.isActive })}
+                  disabled={user.id === currentUserId}
+                  className="h-9 rounded-md border border-slate-200 px-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                >
+                  {user.isActive ? "Disable" : "Enable"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteUser(user.id)}
+                  disabled={user.id === currentUserId}
+                  className="h-9 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 disabled:opacity-50"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </section>
   );
 }
 

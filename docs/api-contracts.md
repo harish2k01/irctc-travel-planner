@@ -2,11 +2,11 @@
 
 Base path: `/api`
 
-Authentication is designed for email/password and Google Sign-In. The current implementation uses a demo user id for local seed data; production auth should bind every request to the authenticated user.
+Authentication uses email/password sessions. Every request is bound to the authenticated user.
 
 ## `GET /journeys`
 
-Returns journeys with route, train, reminder, and attachment context when PostgreSQL is configured. Without `DATABASE_URL`, it returns an empty journey list unless `NEXT_PUBLIC_USE_DEMO_DATA=true` is set.
+Returns journeys with route, train, reminder, and attachment context for the authenticated user.
 
 ```json
 {

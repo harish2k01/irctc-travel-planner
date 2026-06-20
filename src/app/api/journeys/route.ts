@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
 import { createJourneySchema, normalizeJourneyInput } from "@/lib/api-schemas";
+import { requireUser } from "@/lib/auth";
 import { buildJourneyReminders } from "@/lib/dates";
 import { prisma } from "@/lib/db";
-import { journeys } from "@/lib/seed-data";
-
-const DEMO_USER_ID = "demo-user";
 
 function hasDatabase() {
   return Boolean(process.env.DATABASE_URL);
@@ -16,14 +14,12 @@ function toDate(dateOnly: string) {
 
 export async function GET() {
   if (!hasDatabase()) {
-    return NextResponse.json({
-      data: process.env.NEXT_PUBLIC_USE_DEMO_DATA === "true" ? journeys : [],
-      source: "seed",
-    });
+    return NextResponse.json({ data: [], source: "empty" });
   }
 
+  const user = await requireUser();
   const data = await prisma.journey.findMany({
-    where: { userId: DEMO_USER_ID },
+    where: { userId: user.id },
     include: { route: true, train: true, reminders: true, attachments: true },
     orderBy: { travelDate: "asc" },
   });
@@ -32,6 +28,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const user = await requireUser();
   const parsed = createJourneySchema.safeParse(await request.json());
 
   if (!parsed.success) {
@@ -57,19 +54,9 @@ export async function POST(request: Request) {
   const normalized = normalizeJourneyInput(parsed.data);
 
   const data = await prisma.$transaction(async (tx) => {
-    await tx.user.upsert({
-      where: { id: DEMO_USER_ID },
-      update: {},
-      create: {
-        id: DEMO_USER_ID,
-        email: "demo@commuterail.in",
-        name: "Demo Commuter",
-      },
-    });
-
     const journey = await tx.journey.create({
       data: {
-        userId: DEMO_USER_ID,
+        userId: user.id,
         routeId: normalized.routeId,
         trainId: normalized.trainId,
         travelDate: toDate(normalized.travelDate),

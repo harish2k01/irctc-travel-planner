@@ -54,11 +54,19 @@ enum NotificationStatus {
   READ
 }
 
+enum UserRole {
+  ADMIN
+  USER
+}
+
 model User {
   id           String         @id @default(cuid())
   email        String         @unique
   name         String?
   passwordHash String?
+  role         UserRole       @default(USER)
+  isActive     Boolean        @default(true)
+  mustResetPassword Boolean   @default(false)
   googleId     String?        @unique
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
@@ -68,6 +76,26 @@ model User {
   leaves       LeaveRequest[]
   notifications Notification[]
   attachments  Attachment[]
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AppSettings {
+  id           String   @id
+  allowSignups Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Route {
