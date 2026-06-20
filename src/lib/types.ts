@@ -36,8 +36,12 @@ export type Journey = {
   travelDate: string;
   bookingOpenDate: string;
   preferredClass: string;
-  direction: TravelDirection;
-  recurrence: RecurrenceType;
+  sourceCode?: string;
+  sourceName?: string;
+  destinationCode?: string;
+  destinationName?: string;
+  direction?: TravelDirection;
+  recurrence?: RecurrenceType;
   status: JourneyStatus;
   notes?: string;
   pnr?: string;

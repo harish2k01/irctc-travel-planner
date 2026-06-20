@@ -3,6 +3,14 @@ import { z } from "zod";
 import { journeyStatusSchema } from "@/lib/api-schemas";
 
 const providerResponseSchema = z.object({
+  trainNumber: z.string().max(12).optional(),
+  trainName: z.string().max(120).optional(),
+  travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  preferredClass: z.string().max(12).optional(),
+  sourceCode: z.string().max(16).optional(),
+  sourceName: z.string().max(120).optional(),
+  destinationCode: z.string().max(16).optional(),
+  destinationName: z.string().max(120).optional(),
   status: journeyStatusSchema.optional(),
   coach: z.string().max(8).optional(),
   seat: z.string().max(12).optional(),

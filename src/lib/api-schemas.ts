@@ -17,8 +17,13 @@ export const createJourneySchema = z.object({
   trainId: z.string().min(1),
   travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   preferredClass: z.string().min(1),
-  direction: z.enum(["HOME_TO_OFFICE", "OFFICE_TO_HOME"]),
-  recurrence: z.enum(["ONE_TIME", "WEEKLY", "CUSTOM"]),
+  sourceCode: z.string().max(16).optional(),
+  sourceName: z.string().max(120).optional(),
+  destinationCode: z.string().max(16).optional(),
+  destinationName: z.string().max(120).optional(),
+  direction: z.enum(["HOME_TO_OFFICE", "OFFICE_TO_HOME"]).optional(),
+  recurrence: z.enum(["ONE_TIME", "WEEKLY", "CUSTOM"]).optional(),
+  pnr: z.string().regex(/^\d{10}$/).optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -28,6 +33,10 @@ export const updateJourneyStatusSchema = z.object({
   trainId: z.string().min(1).optional(),
   travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   preferredClass: z.string().min(1).optional(),
+  sourceCode: z.string().max(16).optional(),
+  sourceName: z.string().max(120).optional(),
+  destinationCode: z.string().max(16).optional(),
+  destinationName: z.string().max(120).optional(),
   direction: z.enum(["HOME_TO_OFFICE", "OFFICE_TO_HOME"]).optional(),
   recurrence: z.enum(["ONE_TIME", "WEEKLY", "CUSTOM"]).optional(),
   notes: z.string().max(500).optional(),
@@ -50,6 +59,8 @@ export function normalizeJourneyInput(input: z.infer<typeof createJourneySchema>
   return {
     ...input,
     bookingOpenDate: calculateBookingOpenDate(input.travelDate),
+    direction: input.direction ?? "HOME_TO_OFFICE",
+    recurrence: input.recurrence ?? "ONE_TIME",
     status: "PLANNED" as const,
   };
 }

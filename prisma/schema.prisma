@@ -108,6 +108,10 @@ model Journey {
   travelDate       DateTime
   bookingOpenDate  DateTime
   preferredClass   String
+  sourceCode       String?
+  sourceName       String?
+  destinationCode  String?
+  destinationName  String?
   direction        TravelDirection
   recurrence       RecurrenceType
   status           JourneyStatus     @default(PLANNED)

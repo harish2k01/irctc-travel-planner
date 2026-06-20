@@ -42,7 +42,7 @@ import {
 } from "recharts";
 import { addDays, buildJourneyReminders, calculateBookingOpenDate, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
 import type { Holiday, Journey, JourneyStatus, Route, Train as TrainType } from "@/lib/types";
-import { analytics, notificationPreferences } from "@/lib/seed-data";
+import { notificationPreferences } from "@/lib/seed-data";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 type Props = {
@@ -134,6 +134,7 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
     const travelDate = String(formData.get("travelDate"));
     const trainId = String(formData.get("trainId"));
     const train = trainById.get(trainId) ?? trains[0];
+    const route = routeById.get(train.routeId);
     const newJourney: Journey = {
       id: `local-${Date.now()}`,
       routeId: train.routeId,
@@ -141,9 +142,14 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
       travelDate,
       bookingOpenDate: calculateBookingOpenDate(travelDate),
       preferredClass: String(formData.get("preferredClass")),
-      direction: String(formData.get("direction")) as Journey["direction"],
-      recurrence: String(formData.get("recurrence")) as Journey["recurrence"],
+      sourceCode: optionalString(formData.get("sourceCode")) ?? route?.originCode,
+      sourceName: optionalString(formData.get("sourceName")) ?? route?.originName,
+      destinationCode: optionalString(formData.get("destinationCode")) ?? route?.destinationCode,
+      destinationName: optionalString(formData.get("destinationName")) ?? route?.destinationName,
+      direction: "HOME_TO_OFFICE",
+      recurrence: "ONE_TIME",
       status: "PLANNED",
+      pnr: optionalString(formData.get("pnr")),
       notes: String(formData.get("notes") ?? ""),
     };
 
@@ -156,8 +162,11 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
           trainId: newJourney.trainId,
           travelDate: newJourney.travelDate,
           preferredClass: newJourney.preferredClass,
-          direction: newJourney.direction,
-          recurrence: newJourney.recurrence,
+          sourceCode: newJourney.sourceCode,
+          sourceName: newJourney.sourceName,
+          destinationCode: newJourney.destinationCode,
+          destinationName: newJourney.destinationName,
+          pnr: newJourney.pnr,
           notes: newJourney.notes,
         }),
       });
@@ -285,9 +294,8 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
                 <Train className="h-6 w-6" aria-hidden />
               </div>
               <div>
-                <p className="text-sm font-medium text-slate-500">IRCTC Travel Planner</p>
                 <h1 className="text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
-                  Weekly office commute control center
+                  IRCTC Travel Planner
                 </h1>
               </div>
             </div>
@@ -471,27 +479,147 @@ function Planner({
   routeById: Map<string, Route>;
   onCreateJourney: (formData: FormData) => void;
 }) {
-  const [travelDate, setTravelDate] = useState("2026-08-21");
-  const bookingOpenDate = calculateBookingOpenDate(travelDate);
+  const firstTrain = trains[0];
+  const firstRoute = firstTrain ? routeById.get(firstTrain.routeId) : undefined;
+  const formRef = useRef<HTMLFormElement>(null);
+  const [selectedTrainId, setSelectedTrainId] = useState(firstTrain?.id ?? "");
+  const [trainQuery, setTrainQuery] = useState(firstTrain ? trainSearchLabel(firstTrain, firstRoute) : "");
+  const [travelDate, setTravelDate] = useState("");
+  const [preferredClass, setPreferredClass] = useState(firstTrain?.preferredClasses[0] ?? "3A");
+  const [pnr, setPnr] = useState("");
+  const [sourceCode, setSourceCode] = useState(firstRoute?.originCode ?? "");
+  const [sourceName, setSourceName] = useState(firstRoute?.originName ?? "");
+  const [destinationCode, setDestinationCode] = useState(firstRoute?.destinationCode ?? "");
+  const [destinationName, setDestinationName] = useState(firstRoute?.destinationName ?? "");
+  const [pnrMessage, setPnrMessage] = useState<string | null>(null);
+  const selectedTrain = trains.find((train) => train.id === selectedTrainId) ?? firstTrain;
+  const bookingOpenDate = travelDate ? calculateBookingOpenDate(travelDate) : "";
+
+  function selectTrain(train: TrainType) {
+    const route = routeById.get(train.routeId);
+    setSelectedTrainId(train.id);
+    setTrainQuery(trainSearchLabel(train, route));
+    setPreferredClass(train.preferredClasses[0] ?? preferredClass);
+    setSourceCode(route?.originCode ?? "");
+    setSourceName(route?.originName ?? "");
+    setDestinationCode(route?.destinationCode ?? "");
+    setDestinationName(route?.destinationName ?? "");
+  }
+
+  function updateTrainQuery(value: string) {
+    setTrainQuery(value);
+    const match = trains.find((train) => trainSearchLabel(train, routeById.get(train.routeId)).toLowerCase() === value.toLowerCase());
+
+    if (match) {
+      selectTrain(match);
+    }
+  }
+
+  async function syncPnrForCreate() {
+    if (!/^\d{10}$/.test(pnr)) {
+      setPnrMessage("Enter a valid 10 digit PNR.");
+      return;
+    }
+
+    const response = await fetch(`/api/pnr/${pnr}`);
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setPnrMessage(payload.error ?? "PNR sync failed.");
+      return;
+    }
+
+    const data = payload.data as Partial<Journey> & { trainNumber?: string; trainName?: string };
+    const matchedTrain = data.trainNumber
+      ? trains.find((train) => train.trainNumber === data.trainNumber)
+      : undefined;
+
+    if (matchedTrain) {
+      selectTrain(matchedTrain);
+    } else if (data.trainNumber) {
+      setTrainQuery(`${data.trainNumber} ${data.trainName ?? ""}`.trim());
+    }
+
+    if (data.travelDate) setTravelDate(data.travelDate);
+    if (data.preferredClass) setPreferredClass(data.preferredClass);
+    if (data.sourceCode) setSourceCode(data.sourceCode);
+    if (data.sourceName) setSourceName(data.sourceName);
+    if (data.destinationCode) setDestinationCode(data.destinationCode);
+    if (data.destinationName) setDestinationName(data.destinationName);
+    setPnrMessage("PNR details loaded. Review and save the journey.");
+  }
 
   return (
     <section className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
       <Panel title="Create journey" action="60-day booking window">
-        <form action={onCreateJourney} className="grid gap-4">
+        <form ref={formRef} action={onCreateJourney} className="grid gap-4">
+          <input type="hidden" name="trainId" value={selectedTrain?.id ?? ""} />
           <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Preferred train
-            <select name="trainId" className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
+            PNR number
+            <div className="flex gap-2">
+              <input
+                name="pnr"
+                inputMode="numeric"
+                value={pnr}
+                onChange={(event) => setPnr(event.target.value)}
+                placeholder="10 digit PNR"
+                className="h-11 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
+              />
+              <button
+                type="button"
+                onClick={syncPnrForCreate}
+                className="inline-flex h-11 shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+              >
+                <Clock className="h-4 w-4" aria-hidden />
+                Load
+              </button>
+            </div>
+          </label>
+          {pnrMessage && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+              {pnrMessage}
+            </div>
+          )}
+          <label className="grid gap-2 text-sm font-medium text-slate-700">
+            Search train
+            <input
+              list="train-options"
+              value={trainQuery}
+              onChange={(event) => updateTrainQuery(event.target.value)}
+              placeholder="Search by train number, name, source, or destination"
+              className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
+            />
+            <datalist id="train-options">
               {trains.map((train) => {
                 const route = routeById.get(train.routeId);
                 return (
-                  <option key={train.id} value={train.id}>
-                    {train.trainNumber} {train.trainName} - {route?.originCode} to {route?.destinationCode}
-                  </option>
+                  <option key={train.id} value={trainSearchLabel(train, route)} />
                 );
               })}
-            </select>
+            </datalist>
+            {selectedTrain && (
+              <span className="text-xs font-medium text-slate-500">
+                Selected: {selectedTrain.trainNumber} {selectedTrain.trainName}
+              </span>
+            )}
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Source station code
+              <input name="sourceCode" value={sourceCode} onChange={(event) => setSourceCode(event.target.value.toUpperCase())} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Source station name
+              <input name="sourceName" value={sourceName} onChange={(event) => setSourceName(event.target.value)} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Destination station code
+              <input name="destinationCode" value={destinationCode} onChange={(event) => setDestinationCode(event.target.value.toUpperCase())} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Destination station name
+              <input name="destinationName" value={destinationName} onChange={(event) => setDestinationName(event.target.value)} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+            </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Travel date
               <input
@@ -499,32 +627,16 @@ function Planner({
                 type="date"
                 value={travelDate}
                 onChange={(event) => setTravelDate(event.target.value)}
+                required
                 className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
               />
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Preferred class
-              <select name="preferredClass" className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                {["2A", "3A", "SL", "CC", "EC", "2S"].map((coachClass) => (
-                  <option key={coachClass}>{coachClass}</option>
+              <select name="preferredClass" value={preferredClass} onChange={(event) => setPreferredClass(event.target.value)} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
+                {Array.from(new Set([...(selectedTrain?.preferredClasses ?? []), "2A", "3A", "SL", "CC", "EC", "2S"])).map((coachClass) => (
+                  <option key={coachClass} value={coachClass}>{coachClass}</option>
                 ))}
-              </select>
-            </label>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Direction
-              <select name="direction" className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                <option value="HOME_TO_OFFICE">Home to Office</option>
-                <option value="OFFICE_TO_HOME">Office to Home</option>
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Recurrence
-              <select name="recurrence" className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                <option value="ONE_TIME">One-time</option>
-                <option value="WEEKLY">Weekly</option>
-                <option value="CUSTOM">Custom pattern</option>
               </select>
             </label>
           </div>
@@ -543,13 +655,13 @@ function Planner({
           </button>
         </form>
       </Panel>
-      <Panel title="Generated reminders" action={formatDate(bookingOpenDate)}>
+      <Panel title="Generated reminders" action={bookingOpenDate ? formatDate(bookingOpenDate) : "Set travel date"}>
         <div className="grid gap-3">
-          {[
+          {(bookingOpenDate ? [
             { label: "7 days before booking opens", date: addDays(bookingOpenDate, -7) },
             { label: "1 day before booking opens", date: addDays(bookingOpenDate, -1) },
             { label: "At booking open time", date: bookingOpenDate },
-          ].map((reminder) => (
+          ] : []).map((reminder) => (
             <div key={reminder.label} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4">
               <div className="flex items-center gap-3">
                 <Bell className="h-5 w-5 text-blue-700" aria-hidden />
@@ -558,6 +670,11 @@ function Planner({
               <span className="text-sm font-semibold text-slate-950">{formatDate(reminder.date)}</span>
             </div>
           ))}
+          {!bookingOpenDate && (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
+              Select a travel date to generate booking reminders.
+            </div>
+          )}
         </div>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           {notificationPreferences.map((preference) => (
@@ -608,8 +725,10 @@ function Tracker({
       trainId,
       travelDate: String(formData.get("travelDate")),
       preferredClass: String(formData.get("preferredClass")),
-      direction: String(formData.get("direction")) as Journey["direction"],
-      recurrence: String(formData.get("recurrence")) as Journey["recurrence"],
+      sourceCode: optionalString(formData.get("sourceCode")),
+      sourceName: optionalString(formData.get("sourceName")),
+      destinationCode: optionalString(formData.get("destinationCode")),
+      destinationName: optionalString(formData.get("destinationName")),
       status: String(formData.get("status")) as JourneyStatus,
       notes: String(formData.get("notes") ?? ""),
       pnr: optionalString(formData.get("pnr")),
@@ -668,7 +787,7 @@ function Tracker({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-semibold text-slate-950">{trainById.get(journey.trainId)?.trainNumber} {trainById.get(journey.trainId)?.trainName}</h3>
-                        <p className="mt-1 text-xs text-slate-600">{routeLabel(routeById.get(journey.routeId))}</p>
+                        <p className="mt-1 text-xs text-slate-600">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
                       </div>
                       <StatusBadge status={journey.status} />
                     </div>
@@ -758,19 +877,20 @@ function Tracker({
                 <input name="preferredClass" defaultValue={editingJourney.preferredClass} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Direction
-                <select name="direction" defaultValue={editingJourney.direction} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                  <option value="HOME_TO_OFFICE">Home to Office</option>
-                  <option value="OFFICE_TO_HOME">Office to Home</option>
-                </select>
+                Source station code
+                <input name="sourceCode" defaultValue={editingJourney.sourceCode ?? routeById.get(editingJourney.routeId)?.originCode ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Recurrence
-                <select name="recurrence" defaultValue={editingJourney.recurrence} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                  <option value="ONE_TIME">One-time</option>
-                  <option value="WEEKLY">Weekly</option>
-                  <option value="CUSTOM">Custom pattern</option>
-                </select>
+                Source station name
+                <input name="sourceName" defaultValue={editingJourney.sourceName ?? routeById.get(editingJourney.routeId)?.originName ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Destination station code
+                <input name="destinationCode" defaultValue={editingJourney.destinationCode ?? routeById.get(editingJourney.routeId)?.destinationCode ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Destination station name
+                <input name="destinationName" defaultValue={editingJourney.destinationName ?? routeById.get(editingJourney.routeId)?.destinationName ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 PNR
@@ -1082,16 +1202,25 @@ function AnalyticsPanel({
   journeys: Journey[];
   routeById: Map<string, Route>;
 }) {
+  const bookedJourneys = journeys.filter((journey) => journey.farePaid);
+  const monthlyAnalytics = buildMonthlyAnalytics(journeys);
   const mostUsedRoutes = Array.from(
     journeys.reduce((map, journey) => {
-      map.set(journey.routeId, (map.get(journey.routeId) ?? 0) + 1);
+      const label = journeyRouteLabel(journey, routeById.get(journey.routeId));
+      map.set(label, (map.get(label) ?? 0) + 1);
       return map;
     }, new Map<string, number>()),
-  ).map(([routeId, count]) => ({ route: routeLabel(routeById.get(routeId)), count }));
+  ).map(([route, count]) => ({ route, count }));
 
-  const averageFare = journeys.reduce((sum, journey) => sum + (journey.farePaid ?? 0), 0) / journeys.filter((journey) => journey.farePaid).length;
-  const waitlistFrequency = Math.round((journeys.filter((journey) => ["WAITLISTED", "RAC"].includes(journey.status)).length / journeys.length) * 100);
-  const successRate = Math.round((journeys.filter((journey) => ["BOOKED", "CONFIRMED", "COMPLETED"].includes(journey.status)).length / journeys.length) * 100);
+  const averageFare = bookedJourneys.length > 0
+    ? bookedJourneys.reduce((sum, journey) => sum + (journey.farePaid ?? 0), 0) / bookedJourneys.length
+    : 0;
+  const waitlistFrequency = journeys.length > 0
+    ? Math.round((journeys.filter((journey) => ["WAITLISTED", "RAC"].includes(journey.status)).length / journeys.length) * 100)
+    : 0;
+  const successRate = journeys.length > 0
+    ? Math.round((journeys.filter((journey) => ["BOOKED", "CONFIRMED", "COMPLETED"].includes(journey.status)).length / journeys.length) * 100)
+    : 0;
 
   return (
     <section className="grid gap-5">
@@ -1101,11 +1230,16 @@ function AnalyticsPanel({
         <MetricCard icon={CheckCircle2} label="Booking success rate" value={`${successRate}%`} tone="green" />
         <MetricCard icon={MapPin} label="Routes used" value={mostUsedRoutes.length.toString()} tone="slate" />
       </div>
+      {journeys.length === 0 && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm font-medium text-slate-600">
+          No analytics yet. Add journeys to build fare, route, waitlist, and booking success trends.
+        </div>
+      )}
       <div className="grid gap-5 lg:grid-cols-2">
         <Panel title="Trips per month" action="Trend">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={analytics}>
+              <BarChart data={monthlyAnalytics}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="month" />
                 <YAxis />
@@ -1118,7 +1252,7 @@ function AnalyticsPanel({
         <Panel title="Travel spend trends" action="INR">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={analytics}>
+              <AreaChart data={monthlyAnalytics}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="month" />
                 <YAxis />
@@ -1203,7 +1337,7 @@ function JourneyRow({
         </div>
         <div>
           <h3 className="text-sm font-semibold text-slate-950">{train?.trainNumber} {train?.trainName}</h3>
-          <p className="mt-1 text-sm text-slate-600">{routeLabel(route)} - {formatDate(journey.travelDate)}</p>
+          <p className="mt-1 text-sm text-slate-600">{journeyRouteLabel(journey, route)} - {formatDate(journey.travelDate)}</p>
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -1265,6 +1399,45 @@ function routeLabel(route?: Route) {
   }
 
   return `${route.originCode} to ${route.destinationCode}`;
+}
+
+function journeyRouteLabel(journey: Journey, route?: Route) {
+  const source = journey.sourceCode || route?.originCode;
+  const destination = journey.destinationCode || route?.destinationCode;
+
+  if (source && destination) {
+    return `${source} to ${destination}`;
+  }
+
+  return routeLabel(route);
+}
+
+function trainSearchLabel(train: TrainType, route?: Route) {
+  const routeText = route ? `${route.originCode} to ${route.destinationCode}` : "route pending";
+  return `${train.trainNumber} ${train.trainName} - ${routeText}`;
+}
+
+function buildMonthlyAnalytics(journeys: Journey[]) {
+  const monthMap = journeys.reduce((map, journey) => {
+    const monthKey = journey.travelDate.slice(0, 7);
+    const existing = map.get(monthKey) ?? { month: monthKey, trips: 0, spend: 0, waitlisted: 0 };
+    existing.trips += 1;
+    existing.spend += journey.farePaid ?? 0;
+    existing.waitlisted += ["WAITLISTED", "RAC"].includes(journey.status) ? 1 : 0;
+    map.set(monthKey, existing);
+    return map;
+  }, new Map<string, { month: string; trips: number; spend: number; waitlisted: number }>());
+
+  return Array.from(monthMap.values())
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((item) => ({
+      ...item,
+      month: formatMonthLabel(item.month),
+    }));
+}
+
+function formatMonthLabel(monthKey: string) {
+  return new Intl.DateTimeFormat("en-IN", { month: "short", year: "2-digit" }).format(new Date(`${monthKey}-01T12:00:00.000Z`));
 }
 
 function sortHolidays(a: Holiday, b: Holiday) {

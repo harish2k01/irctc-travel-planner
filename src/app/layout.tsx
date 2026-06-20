@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "IRCTC Travel Planner",
   description: "Calendar-first planner for recurring Indian train office commutes.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

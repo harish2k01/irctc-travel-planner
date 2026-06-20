@@ -26,7 +26,11 @@ async function loadInitialData(): Promise<{
   }
 
   const [dbJourneys, dbRoutes, dbTrains, dbHolidays] = await Promise.all([
-    prisma.journey.findMany({ where: { userId: DEMO_USER_ID }, orderBy: { travelDate: "asc" } }),
+    prisma.journey.findMany({
+      where: { userId: DEMO_USER_ID },
+      include: { route: true },
+      orderBy: { travelDate: "asc" },
+    }),
     prisma.route.findMany({ where: { userId: DEMO_USER_ID }, orderBy: { originCode: "asc" } }),
     prisma.train.findMany({ orderBy: { trainNumber: "asc" } }),
     prisma.holiday.findMany({
@@ -43,6 +47,10 @@ async function loadInitialData(): Promise<{
       travelDate: dateOnly(journey.travelDate),
       bookingOpenDate: dateOnly(journey.bookingOpenDate),
       preferredClass: journey.preferredClass,
+      sourceCode: journey.sourceCode ?? journey.route.originCode,
+      sourceName: journey.sourceName ?? journey.route.originName,
+      destinationCode: journey.destinationCode ?? journey.route.destinationCode,
+      destinationName: journey.destinationName ?? journey.route.destinationName,
       direction: journey.direction,
       recurrence: journey.recurrence,
       status: journey.status,

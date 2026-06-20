@@ -65,10 +65,15 @@ export async function POST(request: Request) {
         travelDate: toDate(normalized.travelDate),
         bookingOpenDate: toDate(normalized.bookingOpenDate),
         preferredClass: normalized.preferredClass,
+        sourceCode: normalized.sourceCode,
+        sourceName: normalized.sourceName,
+        destinationCode: normalized.destinationCode,
+        destinationName: normalized.destinationName,
         direction: normalized.direction,
         recurrence: normalized.recurrence,
         status: normalized.status,
         notes: normalized.notes,
+        pnr: normalized.pnr,
       },
     });
 
