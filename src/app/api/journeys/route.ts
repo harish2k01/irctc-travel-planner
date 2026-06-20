@@ -57,6 +57,16 @@ export async function POST(request: Request) {
   const normalized = normalizeJourneyInput(parsed.data);
 
   const data = await prisma.$transaction(async (tx) => {
+    await tx.user.upsert({
+      where: { id: DEMO_USER_ID },
+      update: {},
+      create: {
+        id: DEMO_USER_ID,
+        email: "demo@commuterail.in",
+        name: "Demo Commuter",
+      },
+    });
+
     const journey = await tx.journey.create({
       data: {
         userId: DEMO_USER_ID,
