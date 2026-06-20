@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
   const data = await prisma.holiday.create({
     data: {
-      userId: parsed.data.type === "NATIONAL" || parsed.data.type === "STATE" ? null : DEMO_USER_ID,
+      userId: null,
       name: parsed.data.name,
       date: toDate(parsed.data.date),
       type: parsed.data.type,
