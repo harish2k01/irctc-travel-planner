@@ -21,7 +21,7 @@ async function loadInitialData(): Promise<{
       journeys: process.env.NEXT_PUBLIC_USE_DEMO_DATA === "true" ? seedJourneys : [],
       routes: seedRoutes,
       trains: seedTrains,
-      holidays: seedHolidays,
+      holidays: process.env.NEXT_PUBLIC_USE_DEMO_DATA === "true" ? seedHolidays : [],
     };
   }
 

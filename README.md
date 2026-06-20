@@ -24,7 +24,7 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-The app starts with no journeys when `DATABASE_URL` is not set. Set `NEXT_PUBLIC_USE_DEMO_DATA=true` if you want to show bundled demo journeys locally.
+The app starts with no journeys or holidays when `DATABASE_URL` is not set. Set `NEXT_PUBLIC_USE_DEMO_DATA=true` if you want to show bundled demo journeys and holidays locally.
 
 ## Run With PostgreSQL
 
@@ -60,6 +60,17 @@ The Compose file starts PostgreSQL and the Next.js app. Run migrations before pr
 ```bash
 npm run prisma:migrate
 ```
+
+## PNR Sync
+
+PNR sync is provider-backed. The app does not scrape IRCTC or automate IRCTC login/CAPTCHA flows. Configure a licensed PNR provider endpoint that accepts a `pnr` query parameter and returns fields such as `status`, `coach`, `seat`, `farePaid`, `waitlistPosition`, and `bookingDate`.
+
+```bash
+PNR_PROVIDER_URL="https://provider.example.com/pnr"
+PNR_PROVIDER_API_KEY="optional-provider-token"
+```
+
+If no provider is configured, the Sync button validates the PNR and reports that sync is not configured.
 
 ## Kubernetes
 

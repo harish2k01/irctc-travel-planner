@@ -12,6 +12,7 @@ data:
   NEXT_PUBLIC_APP_URL: https://irctc-travel-planner.k8s.harish2k01.xyz
   NEXT_PUBLIC_USE_DEMO_DATA: "false"
   OBJECT_STORAGE_BUCKET: irctc-travel-planner-attachments
+  PNR_PROVIDER_URL: ""
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -110,6 +111,8 @@ spec:
                 name: irctc-travel-planner-config
           env:
             - name: INCLUDE_DEMO_JOURNEYS
+              value: "false"
+            - name: INCLUDE_DEMO_HOLIDAYS
               value: "false"
           command:
             - sh

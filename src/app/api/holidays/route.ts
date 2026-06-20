@@ -15,7 +15,10 @@ function toDate(dateOnly: string) {
 
 export async function GET() {
   if (!hasDatabase()) {
-    return NextResponse.json({ data: holidays, source: "seed" });
+    return NextResponse.json({
+      data: process.env.NEXT_PUBLIC_USE_DEMO_DATA === "true" ? holidays : [],
+      source: "seed",
+    });
   }
 
   const data = await prisma.holiday.findMany({

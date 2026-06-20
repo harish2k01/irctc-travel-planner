@@ -28,7 +28,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -97,6 +97,7 @@ const statusTone: Record<JourneyStatus, string> = {
 
 type TabId = (typeof tabs)[number]["id"];
 type JourneyPatch = Partial<Omit<Journey, "id" | "bookingOpenDate">>;
+type HolidayDraft = Omit<Holiday, "id">;
 
 function LayoutIcon(props: React.ComponentProps<typeof Home>) {
   return <Home {...props} />;
@@ -105,6 +106,7 @@ function LayoutIcon(props: React.ComponentProps<typeof Home>) {
 export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, today }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [journeys, setJourneys] = useState(initialJourneys);
+  const [holidayItems, setHolidayItems] = useState(holidays);
 
   const upcomingJourneys = useMemo(
     () => journeys.filter((journey) => isWithinNextDays(journey.travelDate, today, 30)),
@@ -206,16 +208,56 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
     }
   }
 
+  async function createHoliday(draft: HolidayDraft) {
+    const newHoliday: Holiday = {
+      id: `local-holiday-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      ...draft,
+    };
+
+    try {
+      const response = await fetch("/api/holidays", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      const payload = await response.json();
+
+      if (response.ok && payload.data?.id) {
+        newHoliday.id = payload.data.id;
+      }
+    } catch {
+      // Keep the optimistic local holiday if the API is unavailable.
+    }
+
+    setHolidayItems((current) => [...current, newHoliday].sort(sortHolidays));
+  }
+
+  async function importHolidays(drafts: HolidayDraft[]) {
+    for (const draft of drafts) {
+      await createHoliday(draft);
+    }
+  }
+
+  async function deleteHoliday(id: string) {
+    setHolidayItems((current) => current.filter((holiday) => holiday.id !== id));
+
+    try {
+      await fetch(`/api/holidays/${id}`, { method: "DELETE" });
+    } catch {
+      // Local state remains editable in preview/offline mode.
+    }
+  }
+
   const calendarEvents = [
     ...journeys.map((journey) => ({
       id: `${journey.id}-travel`,
-      title: `${trainById.get(journey.trainId)?.trainNumber ?? journey.trainId} travel`,
+      title: `${trainById.get(journey.trainId)?.trainNumber ?? journey.trainId} Travel`,
       date: journey.travelDate,
       color: ["CONFIRMED", "BOOKED"].includes(journey.status) ? "#15803d" : "#334155",
     })),
     ...journeys.map((journey) => ({
       id: `${journey.id}-booking`,
-      title: `Book ${trainById.get(journey.trainId)?.trainNumber ?? journey.trainId}`,
+      title: `Booking Opens ${trainById.get(journey.trainId)?.trainNumber ?? journey.trainId}`,
       date: journey.bookingOpenDate,
       color: getBookingUrgency(journey, today).tone === "red" ? "#dc2626" : "#d97706",
     })),
@@ -225,7 +267,7 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
       date: reminder.dueDate,
       color: "#2563eb",
     })),
-    ...holidays.map((holiday) => ({
+    ...holidayItems.map((holiday) => ({
       id: holiday.id,
       title: holiday.name,
       date: holiday.date,
@@ -285,7 +327,7 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
         {activeTab === "dashboard" && (
           <Dashboard
             journeys={journeys}
-            holidays={holidays}
+            holidays={holidayItems}
             upcomingJourneys={upcomingJourneys}
             bookingSoon={bookingSoon}
             pendingBookings={pendingBookings}
@@ -314,7 +356,7 @@ export function TravelPlannerApp({ initialJourneys, routes, trains, holidays, to
           <CalendarPanel events={calendarEvents} />
         )}
         {activeTab === "holidays" && (
-          <HolidayPanel holidays={holidays} />
+          <HolidayPanel holidays={holidayItems} onCreateHoliday={createHoliday} onImportHolidays={importHolidays} onDeleteHoliday={deleteHoliday} />
         )}
         {activeTab === "analytics" && (
           <AnalyticsPanel journeys={journeys} routeById={routeById} />
@@ -549,6 +591,7 @@ function Tracker({
   onDeleteJourney: (id: string) => void;
 }) {
   const [editingJourney, setEditingJourney] = useState<Journey | null>(null);
+  const [pnrSyncMessage, setPnrSyncMessage] = useState<string | null>(null);
 
   function submitEdit(formData: FormData) {
     if (!editingJourney) {
@@ -577,6 +620,35 @@ function Tracker({
       waitlistPosition: waitlistPosition ? Number(waitlistPosition) : undefined,
     });
     setEditingJourney(null);
+    setPnrSyncMessage(null);
+  }
+
+  async function syncPnr(form: HTMLFormElement) {
+    if (!editingJourney) {
+      return;
+    }
+
+    const pnr = optionalString(new FormData(form).get("pnr"));
+
+    if (!pnr || !/^\d{10}$/.test(pnr)) {
+      setPnrSyncMessage("Enter a valid 10 digit PNR before syncing.");
+      return;
+    }
+
+    const response = await fetch(`/api/pnr/${pnr}`);
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setPnrSyncMessage(payload.error ?? "PNR sync failed.");
+      return;
+    }
+
+    onUpdateJourney(editingJourney.id, {
+      pnr,
+      ...payload.data,
+    });
+    setEditingJourney((current) => (current ? { ...current, pnr, ...payload.data } : current));
+    setPnrSyncMessage("PNR data synced.");
   }
 
   return (
@@ -615,7 +687,10 @@ function Tracker({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setEditingJourney(journey)}
+                        onClick={() => {
+                          setEditingJourney(journey);
+                          setPnrSyncMessage(null);
+                        }}
                         className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700"
                         aria-label={`Edit ${trainById.get(journey.trainId)?.trainNumber ?? "journey"}`}
                       >
@@ -640,12 +715,15 @@ function Tracker({
 
       {editingJourney && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-          <form action={submitEdit} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
+          <form key={JSON.stringify(editingJourney)} action={submitEdit} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-slate-950">Edit journey</h2>
               <button
                 type="button"
-                onClick={() => setEditingJourney(null)}
+                onClick={() => {
+                  setEditingJourney(null);
+                  setPnrSyncMessage(null);
+                }}
                 className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700"
                 aria-label="Close edit journey"
               >
@@ -696,7 +774,17 @@ function Tracker({
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 PNR
-                <input name="pnr" inputMode="numeric" defaultValue={editingJourney.pnr ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                <div className="flex gap-2">
+                  <input name="pnr" inputMode="numeric" defaultValue={editingJourney.pnr ?? ""} className="h-11 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                  <button
+                    type="button"
+                    onClick={(event) => syncPnr(event.currentTarget.form as HTMLFormElement)}
+                    className="inline-flex h-11 shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                  >
+                    <Clock className="h-4 w-4" aria-hidden />
+                    Sync
+                  </button>
+                </div>
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Booking date
@@ -723,8 +811,16 @@ function Tracker({
               Notes
               <textarea name="notes" rows={4} defaultValue={editingJourney.notes ?? ""} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950" />
             </label>
+            {pnrSyncMessage && (
+              <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+                {pnrSyncMessage}
+              </div>
+            )}
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => setEditingJourney(null)} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+              <button type="button" onClick={() => {
+                setEditingJourney(null);
+                setPnrSyncMessage(null);
+              }} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
                 <X className="h-4 w-4" aria-hidden />
                 Cancel
               </button>
@@ -752,6 +848,12 @@ function CalendarPanel({ events }: { events: Array<{ id: string; title: string; 
             center: "title",
             right: "dayGridMonth,timeGridWeek,listWeek",
           }}
+          buttonText={{
+            today: "Today",
+            month: "Month",
+            week: "Week",
+            list: "Agenda",
+          }}
           events={events}
           editable
           height="auto"
@@ -761,43 +863,208 @@ function CalendarPanel({ events }: { events: Array<{ id: string; title: string; 
   );
 }
 
-function HolidayPanel({ holidays }: { holidays: Holiday[] }) {
+function HolidayPanel({
+  holidays,
+  onCreateHoliday,
+  onImportHolidays,
+  onDeleteHoliday,
+}: {
+  holidays: Holiday[];
+  onCreateHoliday: (draft: HolidayDraft) => Promise<void>;
+  onImportHolidays: (drafts: HolidayDraft[]) => Promise<void>;
+  onDeleteHoliday: (id: string) => void;
+}) {
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showIcsForm, setShowIcsForm] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function submitHoliday(formData: FormData) {
+    const draft = holidayDraftFromForm(formData);
+    await onCreateHoliday(draft);
+    setShowAddForm(false);
+    setNotice(`Added ${draft.name}.`);
+  }
+
+  async function importCsv(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    const text = await file.text();
+    const drafts = parseHolidayCsv(text);
+
+    if (drafts.length === 0) {
+      setNotice("No valid holidays found. CSV columns should be name,date,type,region.");
+      return;
+    }
+
+    await onImportHolidays(drafts);
+    setNotice(`Imported ${drafts.length} holiday${drafts.length === 1 ? "" : "s"}.`);
+  }
+
+  async function syncIcs(formData: FormData) {
+    const url = optionalString(formData.get("icsUrl"));
+    const icsText = optionalString(formData.get("icsText"));
+
+    if (!url && !icsText) {
+      setNotice("Paste an ICS URL or ICS text to sync.");
+      return;
+    }
+
+    const response = await fetch("/api/holidays/import-ics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, icsText }),
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setNotice(payload.error ?? "ICS sync failed.");
+      return;
+    }
+
+    const drafts = payload.data as HolidayDraft[];
+    await onImportHolidays(drafts);
+    setShowIcsForm(false);
+    setNotice(`Synced ${drafts.length} holiday${drafts.length === 1 ? "" : "s"} from ICS.`);
+  }
+
   return (
     <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
       <Panel title="Holiday management" action="CSV and ICS ready">
         <div className="mb-4 flex flex-wrap gap-2">
-          <button className="inline-flex h-10 items-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white">
+          <button
+            type="button"
+            onClick={() => setShowAddForm((current) => !current)}
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white"
+          >
             <Plus className="h-4 w-4" aria-hidden />
             Add holiday
           </button>
-          <button className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+          <button
+            type="button"
+            onClick={() => csvInputRef.current?.click()}
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+          >
             <Upload className="h-4 w-4" aria-hidden />
             Import CSV
           </button>
-          <button className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+          <input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              void importCsv(event.target.files?.[0]);
+              event.currentTarget.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowIcsForm((current) => !current)}
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+          >
             <CalendarDays className="h-4 w-4" aria-hidden />
             Sync ICS
           </button>
         </div>
+
+        {notice && (
+          <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900">
+            {notice}
+          </div>
+        )}
+
+        {showAddForm && (
+          <form action={submitHoliday} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Name
+                <input name="name" required className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Date
+                <input name="date" type="date" required className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Type
+                <select name="type" defaultValue="COMPANY" className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
+                  <option value="NATIONAL">National</option>
+                  <option value="STATE">State</option>
+                  <option value="COMPANY">Company</option>
+                  <option value="PERSONAL_LEAVE">Personal leave</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Region
+                <input name="region" className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowAddForm(false)} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                Cancel
+              </button>
+              <button className="inline-flex h-10 items-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white">
+                <Save className="h-4 w-4" aria-hidden />
+                Save holiday
+              </button>
+            </div>
+          </form>
+        )}
+
+        {showIcsForm && (
+          <form action={syncIcs} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              ICS URL
+              <input name="icsUrl" type="url" placeholder="https://example.com/calendar.ics" className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Or paste ICS text
+              <textarea name="icsText" rows={5} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-950" />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setShowIcsForm(false)} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                Cancel
+              </button>
+              <button className="inline-flex h-10 items-center gap-2 rounded-md bg-slate-950 px-3 text-sm font-semibold text-white">
+                <CalendarDays className="h-4 w-4" aria-hidden />
+                Sync holidays
+              </button>
+            </div>
+          </form>
+        )}
+
         <div className="space-y-3">
+          {holidays.length === 0 && (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm font-medium text-slate-600">
+              No holidays yet. Add one manually, import a CSV, or sync an ICS calendar.
+            </div>
+          )}
           {holidays.map((holiday) => (
             <div key={holiday.id} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
                 <h3 className="text-sm font-semibold text-slate-950">{holiday.name}</h3>
-                <p className="mt-1 text-sm text-slate-600">{holiday.type.replace("_", " ")}{holiday.region ? ` - ${holiday.region}` : ""}</p>
+                <p className="mt-1 text-sm text-slate-600">{formatEnumLabel(holiday.type)}{holiday.region ? ` - ${holiday.region}` : ""}</p>
               </div>
-              <span className="text-sm font-semibold text-slate-900">{formatDate(holiday.date)}</span>
+              <div className="flex items-center justify-between gap-3 sm:justify-end">
+                <span className="text-sm font-semibold text-slate-900">{formatDate(holiday.date)}</span>
+                <button
+                  type="button"
+                  onClick={() => onDeleteHoliday(holiday.id)}
+                  className="grid h-9 w-9 place-items-center rounded-md border border-red-200 bg-red-50 text-red-700"
+                  aria-label={`Delete ${holiday.name}`}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </Panel>
       <Panel title="Travel suggestions" action="Long weekends">
         <div className="space-y-3">
-          {[
-            "Company Recharge Day creates a Friday to Monday office-trip extension.",
-            "Independence Day falls near a weekend. Book return trains earlier for high demand.",
-            "Personal leave after company holiday reduces one commute leg in July.",
-          ].map((suggestion) => (
+          {buildHolidaySuggestions(holidays).map((suggestion) => (
             <div key={suggestion} className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">
               {suggestion}
             </div>
@@ -998,6 +1265,104 @@ function routeLabel(route?: Route) {
   }
 
   return `${route.originCode} to ${route.destinationCode}`;
+}
+
+function sortHolidays(a: Holiday, b: Holiday) {
+  return a.date.localeCompare(b.date) || a.name.localeCompare(b.name);
+}
+
+function formatEnumLabel(value: string) {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function holidayDraftFromForm(formData: FormData): HolidayDraft {
+  return {
+    name: String(formData.get("name") ?? "").trim(),
+    date: String(formData.get("date") ?? ""),
+    type: String(formData.get("type") ?? "COMPANY") as Holiday["type"],
+    region: optionalString(formData.get("region")),
+  };
+}
+
+function parseHolidayCsv(text: string): HolidayDraft[] {
+  const rows = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return rows.flatMap((row, index) => {
+    const columns = splitCsvRow(row);
+    const [name, date, rawType, region] = columns;
+
+    if (index === 0 && ["name", "holiday"].includes(name?.toLowerCase())) {
+      return [];
+    }
+
+    if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+      return [];
+    }
+
+    return [{
+      name,
+      date,
+      type: normalizeHolidayType(rawType),
+      region: region?.trim() || undefined,
+    }];
+  });
+}
+
+function splitCsvRow(row: string) {
+  const columns: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < row.length; index += 1) {
+    const char = row[index];
+    const next = row[index + 1];
+
+    if (char === '"' && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      columns.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  columns.push(current.trim());
+  return columns;
+}
+
+function normalizeHolidayType(value?: string): Holiday["type"] {
+  const normalized = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (["NATIONAL", "STATE", "COMPANY", "PERSONAL_LEAVE"].includes(normalized)) {
+    return normalized as Holiday["type"];
+  }
+
+  return "COMPANY";
+}
+
+function buildHolidaySuggestions(holidays: Holiday[]) {
+  if (holidays.length === 0) {
+    return ["No holiday suggestions yet. Add holidays or sync a calendar to find long-weekend travel opportunities."];
+  }
+
+  return holidays.slice(0, 3).map((holiday) => {
+    const type = formatEnumLabel(holiday.type).toLowerCase();
+    return `${holiday.name} on ${formatDate(holiday.date)} is marked as ${type}. Review nearby office travel before booking.`;
+  });
 }
 
 function isSameMonth(dateOnly: string, today: string) {

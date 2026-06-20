@@ -23,7 +23,7 @@ export const createJourneySchema = z.object({
 });
 
 export const updateJourneyStatusSchema = z.object({
-  status: journeyStatusSchema,
+  status: journeyStatusSchema.optional(),
   routeId: z.string().min(1).optional(),
   trainId: z.string().min(1).optional(),
   travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

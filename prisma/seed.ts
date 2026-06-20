@@ -10,6 +10,7 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 const DEMO_USER_ID = "demo-user";
 const INCLUDE_DEMO_JOURNEYS = process.env.INCLUDE_DEMO_JOURNEYS === "true";
+const INCLUDE_DEMO_HOLIDAYS = process.env.INCLUDE_DEMO_HOLIDAYS === "true";
 
 function toDate(dateOnly: string) {
   return new Date(`${dateOnly}T00:00:00.000Z`);
@@ -98,24 +99,26 @@ async function main() {
     }
   }
 
-  for (const holiday of holidays) {
-    await prisma.holiday.upsert({
-      where: { id: holiday.id },
-      update: {
-        name: holiday.name,
-        date: toDate(holiday.date),
-        type: holiday.type,
-        region: holiday.region,
-      },
-      create: {
-        id: holiday.id,
-        userId: holiday.type === "NATIONAL" || holiday.type === "STATE" ? null : DEMO_USER_ID,
-        name: holiday.name,
-        date: toDate(holiday.date),
-        type: holiday.type,
-        region: holiday.region,
-      },
-    });
+  if (INCLUDE_DEMO_HOLIDAYS) {
+    for (const holiday of holidays) {
+      await prisma.holiday.upsert({
+        where: { id: holiday.id },
+        update: {
+          name: holiday.name,
+          date: toDate(holiday.date),
+          type: holiday.type,
+          region: holiday.region,
+        },
+        create: {
+          id: holiday.id,
+          userId: holiday.type === "NATIONAL" || holiday.type === "STATE" ? null : DEMO_USER_ID,
+          name: holiday.name,
+          date: toDate(holiday.date),
+          type: holiday.type,
+          region: holiday.region,
+        },
+      });
+    }
   }
 }
 

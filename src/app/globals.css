@@ -44,6 +44,7 @@ textarea {
 .calendar-shell .fc .fc-toolbar-title {
   font-size: 1.125rem;
   font-weight: 650;
+  text-transform: none;
 }
 
 .calendar-shell .fc .fc-button {
@@ -60,6 +61,11 @@ textarea {
   padding: 0.125rem 0.25rem;
   font-size: 0.75rem;
   font-weight: 650;
+}
+
+.calendar-shell .fc .fc-col-header-cell-cushion,
+.calendar-shell .fc .fc-event-title {
+  text-transform: none;
 }
 
 @media (max-width: 720px) {
