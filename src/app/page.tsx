@@ -6,6 +6,8 @@ import { prisma } from "@/lib/db";
 import { getAppSettings } from "@/lib/settings";
 import type { Holiday, Journey, Route, Train } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 function dateOnly(value: Date) {
   return value.toISOString().slice(0, 10);
 }
