@@ -29,7 +29,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -43,7 +43,7 @@ import {
 } from "recharts";
 import { addDays, buildJourneyReminders, calculateBookingOpenDate, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
 import type { Holiday, Journey, JourneyStatus, Route, Train as TrainType } from "@/lib/types";
-import { notificationPreferences } from "@/lib/seed-data";
+import { notificationPreferences } from "@/lib/notification-preferences";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 type Props = {
@@ -118,6 +118,17 @@ type ManagedUser = {
   mustResetPassword: boolean;
   createdAt: string;
 };
+type TrainSearchResult = {
+  id?: string;
+  routeId?: string;
+  trainNumber: string;
+  trainName: string;
+  sourceCode?: string;
+  sourceName?: string;
+  destinationCode?: string;
+  destinationName?: string;
+  preferredClasses?: string[];
+};
 
 function LayoutIcon(props: React.ComponentProps<typeof Home>) {
   return <Home {...props} />;
@@ -128,13 +139,15 @@ export function TravelPlannerApp({
   initialSettings,
   initialUsers,
   initialJourneys,
-  routes,
-  trains,
+  routes: initialRoutes,
+  trains: initialTrains,
   holidays,
   today,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("dashboard");
   const [journeys, setJourneys] = useState(initialJourneys);
+  const [routeItems, setRouteItems] = useState(initialRoutes);
+  const [trainItems, setTrainItems] = useState(initialTrains);
   const [holidayItems, setHolidayItems] = useState(holidays);
   const [settings, setSettings] = useState(initialSettings);
   const [users, setUsers] = useState(initialUsers);
@@ -159,25 +172,49 @@ export function TravelPlannerApp({
   const monthlySpend = currentMonthJourneys.reduce((sum, journey) => sum + (journey.farePaid ?? 0), 0);
   const reminders = journeys.flatMap(buildJourneyReminders);
 
-  const routeById = new Map(routes.map((route) => [route.id, route]));
-  const trainById = new Map(trains.map((train) => [train.id, train]));
+  const routeById = new Map(routeItems.map((route) => [route.id, route]));
+  const trainById = new Map(trainItems.map((train) => [train.id, train]));
 
   async function createJourney(formData: FormData) {
     const travelDate = String(formData.get("travelDate"));
-    const trainId = String(formData.get("trainId"));
-    const train = trainById.get(trainId) ?? trains[0];
-    const route = routeById.get(train.routeId);
+    const trainId = optionalString(formData.get("trainId"));
+    const trainQuery = String(formData.get("trainQuery") ?? "");
+    const parsedTrain = parseTrainQuery(trainQuery);
+    const trainNumber = optionalString(formData.get("trainNumber")) ?? parsedTrain.trainNumber;
+    const trainName = optionalString(formData.get("trainName")) ?? parsedTrain.trainName;
+    const sourceCode = optionalString(formData.get("sourceCode"))?.toUpperCase();
+    const sourceName = optionalString(formData.get("sourceName"));
+    const destinationCode = optionalString(formData.get("destinationCode"))?.toUpperCase();
+    const destinationName = optionalString(formData.get("destinationName"));
+    const existingTrain = trainId ? trainById.get(trainId) : undefined;
+    const existingRoute = existingTrain ? routeById.get(existingTrain.routeId) : undefined;
+    const routeId = existingTrain?.routeId ?? `local-route-${Date.now()}`;
+    const nextTrainId = existingTrain?.id ?? `local-train-${Date.now()}`;
+    const nextRoute: Route = existingRoute ?? {
+      id: routeId,
+      originCode: sourceCode ?? "",
+      originName: sourceName ?? sourceCode ?? "",
+      destinationCode: destinationCode ?? "",
+      destinationName: destinationName ?? destinationCode ?? "",
+    };
+    const nextTrain: TrainType = existingTrain ?? {
+      id: nextTrainId,
+      routeId,
+      trainNumber: trainNumber ?? "",
+      trainName: trainName ?? "",
+      preferredClasses: [String(formData.get("preferredClass"))],
+    };
     const newJourney: Journey = {
       id: `local-${Date.now()}`,
-      routeId: train.routeId,
-      trainId,
+      routeId,
+      trainId: nextTrainId,
       travelDate,
       bookingOpenDate: calculateBookingOpenDate(travelDate),
       preferredClass: String(formData.get("preferredClass")),
-      sourceCode: optionalString(formData.get("sourceCode")) ?? route?.originCode,
-      sourceName: optionalString(formData.get("sourceName")) ?? route?.originName,
-      destinationCode: optionalString(formData.get("destinationCode")) ?? route?.destinationCode,
-      destinationName: optionalString(formData.get("destinationName")) ?? route?.destinationName,
+      sourceCode: sourceCode ?? nextRoute.originCode,
+      sourceName: sourceName ?? nextRoute.originName,
+      destinationCode: destinationCode ?? nextRoute.destinationCode,
+      destinationName: destinationName ?? nextRoute.destinationName,
       direction: "HOME_TO_OFFICE",
       recurrence: "ONE_TIME",
       status: "PLANNED",
@@ -191,7 +228,9 @@ export function TravelPlannerApp({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           routeId: newJourney.routeId,
-          trainId: newJourney.trainId,
+          trainId,
+          trainNumber,
+          trainName,
           travelDate: newJourney.travelDate,
           preferredClass: newJourney.preferredClass,
           sourceCode: newJourney.sourceCode,
@@ -206,11 +245,18 @@ export function TravelPlannerApp({
 
       if (response.ok && payload.data?.id) {
         newJourney.id = payload.data.id;
+        newJourney.routeId = payload.data.routeId ?? newJourney.routeId;
+        newJourney.trainId = payload.data.trainId ?? newJourney.trainId;
+        nextRoute.id = newJourney.routeId;
+        nextTrain.id = newJourney.trainId;
+        nextTrain.routeId = newJourney.routeId;
       }
     } catch {
       // Keep the optimistic local journey if the preview API is unavailable.
     }
 
+    setRouteItems((current) => current.some((route) => route.id === nextRoute.id) ? current : [...current, nextRoute]);
+    setTrainItems((current) => current.some((train) => train.id === nextTrain.id) ? current : [...current, nextTrain]);
     setJourneys((current) => [newJourney, ...current]);
     setActiveTab("tracker");
   }
@@ -392,12 +438,12 @@ export function TravelPlannerApp({
           />
         )}
         {activeTab === "planner" && (
-          <Planner trains={trains} routeById={routeById} onCreateJourney={createJourney} />
+          <Planner trains={trainItems} routeById={routeById} onCreateJourney={createJourney} />
         )}
         {activeTab === "tracker" && (
           <Tracker
             journeys={journeys}
-            trains={trains}
+            trains={trainItems}
             trainById={trainById}
             routeById={routeById}
             onUpdateJourney={updateJourney}
@@ -532,41 +578,119 @@ function Planner({
   routeById: Map<string, Route>;
   onCreateJourney: (formData: FormData) => void;
 }) {
-  const firstTrain = trains[0];
-  const firstRoute = firstTrain ? routeById.get(firstTrain.routeId) : undefined;
   const formRef = useRef<HTMLFormElement>(null);
-  const [selectedTrainId, setSelectedTrainId] = useState(firstTrain?.id ?? "");
-  const [trainQuery, setTrainQuery] = useState(firstTrain ? trainSearchLabel(firstTrain, firstRoute) : "");
+  const [selectedTrainId, setSelectedTrainId] = useState("");
+  const [trainQuery, setTrainQuery] = useState("");
+  const [trainNumber, setTrainNumber] = useState("");
+  const [trainName, setTrainName] = useState("");
+  const [searchResults, setSearchResults] = useState<TrainSearchResult[]>([]);
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const [travelDate, setTravelDate] = useState("");
-  const [preferredClass, setPreferredClass] = useState(firstTrain?.preferredClasses[0] ?? "3A");
+  const [preferredClass, setPreferredClass] = useState("3A");
   const [pnr, setPnr] = useState("");
-  const [sourceCode, setSourceCode] = useState(firstRoute?.originCode ?? "");
-  const [sourceName, setSourceName] = useState(firstRoute?.originName ?? "");
-  const [destinationCode, setDestinationCode] = useState(firstRoute?.destinationCode ?? "");
-  const [destinationName, setDestinationName] = useState(firstRoute?.destinationName ?? "");
+  const [sourceCode, setSourceCode] = useState("");
+  const [sourceName, setSourceName] = useState("");
+  const [destinationCode, setDestinationCode] = useState("");
+  const [destinationName, setDestinationName] = useState("");
   const [pnrMessage, setPnrMessage] = useState<string | null>(null);
-  const selectedTrain = trains.find((train) => train.id === selectedTrainId) ?? firstTrain;
+  const selectedTrain = trains.find((train) => train.id === selectedTrainId);
   const bookingOpenDate = travelDate ? calculateBookingOpenDate(travelDate) : "";
 
   function selectTrain(train: TrainType) {
     const route = routeById.get(train.routeId);
     setSelectedTrainId(train.id);
     setTrainQuery(trainSearchLabel(train, route));
+    setTrainNumber(train.trainNumber);
+    setTrainName(train.trainName);
     setPreferredClass(train.preferredClasses[0] ?? preferredClass);
     setSourceCode(route?.originCode ?? "");
     setSourceName(route?.originName ?? "");
     setDestinationCode(route?.destinationCode ?? "");
     setDestinationName(route?.destinationName ?? "");
+    setSearchResults([]);
+    setSearchMessage(null);
+  }
+
+  function selectSearchResult(result: TrainSearchResult) {
+    setSelectedTrainId(result.id ?? "");
+    setTrainQuery(`${result.trainNumber} ${result.trainName}`.trim());
+    setTrainNumber(result.trainNumber);
+    setTrainName(result.trainName);
+    setPreferredClass(result.preferredClasses?.[0] ?? preferredClass);
+    setSourceCode(result.sourceCode?.toUpperCase() ?? sourceCode);
+    setSourceName(result.sourceName ?? sourceName);
+    setDestinationCode(result.destinationCode?.toUpperCase() ?? destinationCode);
+    setDestinationName(result.destinationName ?? destinationName);
+    setSearchResults([]);
+    setSearchMessage(null);
   }
 
   function updateTrainQuery(value: string) {
     setTrainQuery(value);
+    if (value.trim().length < 2) {
+      setSearchResults([]);
+      setSearchMessage(null);
+      setIsSearching(false);
+    }
+
     const match = trains.find((train) => trainSearchLabel(train, routeById.get(train.routeId)).toLowerCase() === value.toLowerCase());
 
     if (match) {
       selectTrain(match);
+      return;
     }
+
+    const parsed = parseTrainQuery(value);
+    setSelectedTrainId("");
+    setTrainNumber(parsed.trainNumber ?? "");
+    setTrainName(parsed.trainName ?? "");
   }
+
+  useEffect(() => {
+    const query = trainQuery.trim();
+
+    if (query.length < 2) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsSearching(true);
+      setSearchMessage(null);
+
+      const params = new URLSearchParams({ q: query });
+      if (sourceCode) params.set("sourceCode", sourceCode);
+      if (destinationCode) params.set("destinationCode", destinationCode);
+      if (travelDate) params.set("travelDate", travelDate);
+
+      try {
+        const response = await fetch(`/api/trains/search?${params.toString()}`, { signal: controller.signal });
+        const payload = await response.json();
+        setSearchResults(Array.isArray(payload.data) ? payload.data : []);
+
+        if (!response.ok) {
+          setSearchMessage(payload.error ?? "Live train search failed.");
+        } else if (!payload.data?.length) {
+          setSearchMessage("No matching saved trains found.");
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setSearchResults([]);
+          setSearchMessage(error instanceof Error ? error.message : "Live train search failed.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, 350);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [destinationCode, sourceCode, trainQuery, travelDate]);
 
   async function syncPnrForCreate() {
     if (!/^\d{10}$/.test(pnr)) {
@@ -591,6 +715,9 @@ function Planner({
       selectTrain(matchedTrain);
     } else if (data.trainNumber) {
       setTrainQuery(`${data.trainNumber} ${data.trainName ?? ""}`.trim());
+      setTrainNumber(data.trainNumber);
+      setTrainName(data.trainName ?? "");
+      setSelectedTrainId("");
     }
 
     if (data.travelDate) setTravelDate(data.travelDate);
@@ -606,7 +733,8 @@ function Planner({
     <section className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
       <Panel title="Create journey" action="60-day booking window">
         <form ref={formRef} action={onCreateJourney} className="grid gap-4">
-          <input type="hidden" name="trainId" value={selectedTrain?.id ?? ""} />
+          <input type="hidden" name="trainId" value={selectedTrainId} />
+          <input type="hidden" name="trainQuery" value={trainQuery} />
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             PNR number
             <div className="flex gap-2">
@@ -634,32 +762,45 @@ function Planner({
             </div>
           )}
           <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Search train
+            Live train search
             <input
-              list="train-options"
               value={trainQuery}
               onChange={(event) => updateTrainQuery(event.target.value)}
-              placeholder="Search by train number, name, source, or destination"
+              placeholder="Type train number, train name, source, or destination"
               className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
             />
-            <datalist id="train-options">
-              {trains.map((train) => {
-                const route = routeById.get(train.routeId);
-                return (
-                  <option key={train.id} value={trainSearchLabel(train, route)} />
-                );
-              })}
-            </datalist>
-            {selectedTrain && (
-              <span className="text-xs font-medium text-slate-500">
-                Selected: {selectedTrain.trainNumber} {selectedTrain.trainName}
-              </span>
+            {(isSearching || searchMessage || searchResults.length > 0) && (
+              <div className="rounded-md border border-slate-200 bg-white p-2">
+                {isSearching && <p className="px-2 py-1 text-xs font-semibold text-slate-500">Searching...</p>}
+                {searchResults.map((result) => (
+                  <button
+                    key={`${result.id ?? result.trainNumber}-${result.sourceCode ?? ""}-${result.destinationCode ?? ""}`}
+                    type="button"
+                    onClick={() => selectSearchResult(result)}
+                    className="block w-full rounded px-2 py-2 text-left hover:bg-slate-50"
+                  >
+                    <span className="block text-sm font-semibold text-slate-950">{result.trainNumber} {result.trainName}</span>
+                    <span className="block text-xs font-medium text-slate-500">
+                      {[result.sourceCode, result.destinationCode].filter(Boolean).join(" to ") || "Route details unavailable"}
+                    </span>
+                  </button>
+                ))}
+                {searchMessage && <p className="px-2 py-1 text-xs font-semibold text-amber-800">{searchMessage}</p>}
+              </div>
             )}
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Train number
+              <input name="trainNumber" value={trainNumber} onChange={(event) => setTrainNumber(event.target.value.toUpperCase())} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
+              Train name
+              <input name="trainName" value={trainName} onChange={(event) => setTrainName(event.target.value)} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+            </label>
+            <label className="grid gap-2 text-sm font-medium text-slate-700">
               Source station code
-              <input name="sourceCode" value={sourceCode} onChange={(event) => setSourceCode(event.target.value.toUpperCase())} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              <input name="sourceCode" value={sourceCode} onChange={(event) => setSourceCode(event.target.value.toUpperCase())} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Source station name
@@ -667,7 +808,7 @@ function Planner({
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Destination station code
-              <input name="destinationCode" value={destinationCode} onChange={(event) => setDestinationCode(event.target.value.toUpperCase())} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              <input name="destinationCode" value={destinationCode} onChange={(event) => setDestinationCode(event.target.value.toUpperCase())} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
             </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Destination station name
@@ -1758,4 +1899,14 @@ function isSameMonth(dateOnly: string, today: string) {
 function optionalString(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
   return text ? text : undefined;
+}
+
+function parseTrainQuery(value: string) {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^([A-Z0-9]{2,12})(?:\s+(.+))?$/i);
+
+  return {
+    trainNumber: match?.[1]?.toUpperCase(),
+    trainName: match?.[2]?.trim(),
+  };
 }

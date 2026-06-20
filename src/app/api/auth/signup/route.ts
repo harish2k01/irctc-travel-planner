@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSession } from "@/lib/auth";
-import { provisionUserCatalog } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/passwords";
 import { getAppSettings } from "@/lib/settings";
@@ -36,7 +35,6 @@ export async function POST(request: Request) {
     },
   });
 
-  await provisionUserCatalog(user.id);
   await createSession(user.id);
 
   return NextResponse.json({ data: { id: user.id, role: user.role } }, { status: 201 });

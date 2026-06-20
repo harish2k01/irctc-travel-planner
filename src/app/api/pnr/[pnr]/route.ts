@@ -31,7 +31,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ pnr
   if (!providerUrl) {
     return NextResponse.json(
       {
-        error: "PNR sync is not configured. Set PNR_PROVIDER_URL and map its response before enabling automatic status sync.",
+        error: "Ticket lookup is not connected yet. Configure PNR_PROVIDER_URL for automatic PNR status sync.",
       },
       { status: 501 },
     );

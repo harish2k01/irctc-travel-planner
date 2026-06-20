@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { provisionUserCatalog } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { sendTemporaryPasswordEmail } from "@/lib/mail";
 import { generateTemporaryPassword, hashPassword } from "@/lib/passwords";
@@ -48,7 +47,6 @@ export async function POST(request: Request) {
       mustResetPassword: true,
     },
   });
-  await provisionUserCatalog(user.id);
 
   let mail: { sent: boolean; reason?: string } = { sent: false };
   try {

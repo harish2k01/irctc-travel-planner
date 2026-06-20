@@ -13,8 +13,10 @@ export const journeyStatusSchema = z.enum([
 ]);
 
 export const createJourneySchema = z.object({
-  routeId: z.string().min(1),
-  trainId: z.string().min(1),
+  routeId: z.string().min(1).optional(),
+  trainId: z.string().min(1).optional(),
+  trainNumber: z.string().min(1).max(12).optional(),
+  trainName: z.string().min(1).max(120).optional(),
   travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   preferredClass: z.string().min(1),
   sourceCode: z.string().max(16).optional(),
@@ -25,6 +27,12 @@ export const createJourneySchema = z.object({
   recurrence: z.enum(["ONE_TIME", "WEEKLY", "CUSTOM"]).optional(),
   pnr: z.string().regex(/^\d{10}$/).optional(),
   notes: z.string().max(500).optional(),
+}).refine((input) => Boolean(input.trainId || (input.trainNumber && input.trainName)), {
+  message: "Provide an existing train or train number and name.",
+  path: ["trainNumber"],
+}).refine((input) => Boolean(input.routeId || (input.sourceCode && input.destinationCode)), {
+  message: "Provide an existing route or source and destination station codes.",
+  path: ["sourceCode"],
 });
 
 export const updateJourneyStatusSchema = z.object({

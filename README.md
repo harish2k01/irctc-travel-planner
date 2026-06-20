@@ -74,6 +74,17 @@ PNR_PROVIDER_API_KEY="optional-provider-token"
 
 If no provider is configured, the Sync button validates the PNR and reports that sync is not configured.
 
+## Live Train Search
+
+Live train search is also provider-backed. The app does not scrape IRCTC search results. Configure a licensed train-search provider that accepts a `q` query parameter, and optionally `sourceCode`, `destinationCode`, and `travelDate`, returning either an array or `{ "data": [...] }` / `{ "trains": [...] }` with `trainNumber`, `trainName`, route fields, and `preferredClasses`.
+
+```bash
+TRAIN_SEARCH_PROVIDER_URL="https://provider.example.com/trains/search"
+TRAIN_SEARCH_PROVIDER_API_KEY="optional-provider-token"
+```
+
+If no provider is configured, users can still manually enter train number, train name, source, destination, and travel date.
+
 ## Kubernetes
 
 Base manifests are in `k8s/manifests.yaml` and include:

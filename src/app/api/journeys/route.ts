@@ -36,9 +36,12 @@ export async function POST(request: Request) {
   }
 
   if (!hasDatabase()) {
+    const normalized = normalizeJourneyInput(parsed.data);
     const journey = {
       id: `draft-${Date.now()}`,
-      ...normalizeJourneyInput(parsed.data),
+      ...normalized,
+      routeId: normalized.routeId ?? "preview-route",
+      trainId: normalized.trainId ?? normalized.trainNumber ?? "preview-train",
     };
 
     return NextResponse.json(
@@ -54,11 +57,77 @@ export async function POST(request: Request) {
   const normalized = normalizeJourneyInput(parsed.data);
 
   const data = await prisma.$transaction(async (tx) => {
+    let routeId = normalized.routeId;
+    let trainId = normalized.trainId;
+
+    if (trainId) {
+      const existingTrain = await tx.train.findFirst({
+        where: {
+          id: trainId,
+          route: { userId: user.id },
+        },
+        include: { route: true },
+      });
+
+      if (!existingTrain) {
+        return null;
+      }
+
+      routeId = existingTrain.routeId;
+    } else {
+      const sourceCode = normalized.sourceCode?.trim().toUpperCase();
+      const destinationCode = normalized.destinationCode?.trim().toUpperCase();
+      const trainNumber = normalized.trainNumber?.trim();
+      const trainName = normalized.trainName?.trim();
+
+      if (!sourceCode || !destinationCode || !trainNumber || !trainName) {
+        return null;
+      }
+
+      const route =
+        (await tx.route.findFirst({
+          where: {
+            userId: user.id,
+            originCode: sourceCode,
+            destinationCode,
+          },
+        })) ??
+        (await tx.route.create({
+          data: {
+            userId: user.id,
+            originCode: sourceCode,
+            originName: normalized.sourceName?.trim() || sourceCode,
+            destinationCode,
+            destinationName: normalized.destinationName?.trim() || destinationCode,
+          },
+        }));
+
+      routeId = route.id;
+
+      const train =
+        (await tx.train.findFirst({
+          where: {
+            routeId,
+            trainNumber,
+          },
+        })) ??
+        (await tx.train.create({
+          data: {
+            routeId,
+            trainNumber,
+            trainName,
+            preferredClasses: [normalized.preferredClass],
+          },
+        }));
+
+      trainId = train.id;
+    }
+
     const journey = await tx.journey.create({
       data: {
         userId: user.id,
-        routeId: normalized.routeId,
-        trainId: normalized.trainId,
+        routeId,
+        trainId,
         travelDate: toDate(normalized.travelDate),
         bookingOpenDate: toDate(normalized.bookingOpenDate),
         preferredClass: normalized.preferredClass,
@@ -78,6 +147,8 @@ export async function POST(request: Request) {
       data: buildJourneyReminders({
         ...normalized,
         id: journey.id,
+        routeId,
+        trainId,
       }).map((reminder) => ({
         journeyId: journey.id,
         type: reminder.type,
@@ -87,6 +158,10 @@ export async function POST(request: Request) {
 
     return journey;
   });
+
+  if (!data) {
+    return NextResponse.json({ error: "Train and route details are required." }, { status: 400 });
+  }
 
   return NextResponse.json({ data, source: "database" }, { status: 201 });
 }

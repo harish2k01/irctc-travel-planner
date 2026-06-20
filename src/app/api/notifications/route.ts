@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { buildJourneyReminders } from "@/lib/dates";
 import { prisma } from "@/lib/db";
-import { notificationPreferences } from "@/lib/seed-data";
+import { notificationPreferences } from "@/lib/notification-preferences";
 import type { Journey } from "@/lib/types";
 
 function dateOnly(value: Date) {

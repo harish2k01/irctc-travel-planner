@@ -6,12 +6,27 @@ const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_URL ?? "",
 });
 const prisma = new PrismaClient({ adapter });
+const previousSampleTrainNumbers = ["12624", "12028", "12128", "12796"];
 
 async function main() {
   await prisma.appSettings.upsert({
     where: { id: "global" },
     update: {},
     create: { id: "global", allowSignups: true },
+  });
+
+  await prisma.train.deleteMany({
+    where: {
+      trainNumber: { in: previousSampleTrainNumbers },
+      journeys: { none: {} },
+    },
+  });
+
+  await prisma.route.deleteMany({
+    where: {
+      trains: { none: {} },
+      journeys: { none: {} },
+    },
   });
 }
 
