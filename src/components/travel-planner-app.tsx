@@ -40,7 +40,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { buildJourneyReminders, calculateBookingOpenDate, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
+import { buildJourneyReminders, calculateBookingOpenDate, daysBetween, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
 import type { Holiday, Journey, JourneyStatus, Reminder, Route, Train as TrainType } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -130,6 +130,14 @@ type ManagedUser = {
   mustResetPassword: boolean;
   createdAt: string;
 };
+type HolidaySuggestion = {
+  id: string;
+  title: string;
+  body: string;
+  date: string;
+  priority: number;
+  tone: "warning" | "info" | "success";
+};
 
 const reminderChannelOptions = [
   { key: "reminderEmailEnabled", label: "Email", icon: Mail },
@@ -138,6 +146,12 @@ const reminderChannelOptions = [
 ] as const;
 
 type ReminderChannelKey = (typeof reminderChannelOptions)[number]["key"];
+
+const holidaySuggestionTone: Record<HolidaySuggestion["tone"], string> = {
+  warning: "border-amber-200 bg-amber-50 text-amber-900",
+  info: "border-blue-200 bg-blue-50 text-blue-900",
+  success: "border-emerald-200 bg-emerald-50 text-emerald-900",
+};
 
 function LayoutIcon(props: React.ComponentProps<typeof Home>) {
   return <Home {...props} />;
@@ -537,7 +551,15 @@ export function TravelPlannerApp({
           <CalendarPanel events={calendarEvents} />
         )}
         {activeTab === "holidays" && (
-          <HolidayPanel holidays={holidayItems} onCreateHoliday={createHoliday} onImportHolidays={importHolidays} onDeleteHoliday={deleteHoliday} />
+          <HolidayPanel
+            holidays={holidayItems}
+            journeys={journeys}
+            routeById={routeById}
+            today={today}
+            onCreateHoliday={createHoliday}
+            onImportHolidays={importHolidays}
+            onDeleteHoliday={deleteHoliday}
+          />
         )}
         {activeTab === "analytics" && (
           <AnalyticsPanel journeys={journeys} routeById={routeById} />
@@ -1472,11 +1494,17 @@ function SettingToggle({
 
 function HolidayPanel({
   holidays,
+  journeys,
+  routeById,
+  today,
   onCreateHoliday,
   onImportHolidays,
   onDeleteHoliday,
 }: {
   holidays: Holiday[];
+  journeys: Journey[];
+  routeById: Map<string, Route>;
+  today: string;
   onCreateHoliday: (draft: HolidayDraft) => Promise<void>;
   onImportHolidays: (drafts: HolidayDraft[]) => Promise<void>;
   onDeleteHoliday: (id: string) => void;
@@ -1665,9 +1693,10 @@ function HolidayPanel({
       </Panel>
       <Panel title="Travel Suggestions" action="Long Weekends">
         <div className="space-y-3">
-          {buildHolidaySuggestions(holidays).map((suggestion) => (
-            <div key={suggestion} className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">
-              {suggestion}
+          {buildHolidaySuggestions(holidays, journeys, routeById, today).map((suggestion) => (
+            <div key={suggestion.id} className={cn("rounded-lg border p-4", holidaySuggestionTone[suggestion.tone])}>
+              <p className="text-sm font-semibold">{suggestion.title}</p>
+              <p className="mt-1 text-sm">{suggestion.body}</p>
             </div>
           ))}
         </div>
@@ -2059,15 +2088,223 @@ function normalizeHolidayType(value?: string): Holiday["type"] {
   return "COMPANY";
 }
 
-function buildHolidaySuggestions(holidays: Holiday[]) {
-  if (holidays.length === 0) {
-    return ["No holiday suggestions yet. Add holidays or sync a calendar to find long-weekend travel opportunities."];
+function buildHolidaySuggestions(
+  holidays: Holiday[],
+  journeys: Journey[],
+  routeById: Map<string, Route>,
+  today: string,
+): HolidaySuggestion[] {
+  const suggestions: HolidaySuggestion[] = [];
+  const seen = new Set<string>();
+  const activeJourneys = journeys.filter((journey) => !["CANCELLED", "COMPLETED"].includes(journey.status));
+  const futureHolidays = holidays
+    .filter((holiday) => daysBetween(today, holiday.date) >= -1)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  function addSuggestion(suggestion: HolidaySuggestion) {
+    if (seen.has(suggestion.id)) {
+      return;
+    }
+
+    seen.add(suggestion.id);
+    suggestions.push(suggestion);
   }
 
-  return holidays.slice(0, 3).map((holiday) => {
-    const type = formatEnumLabel(holiday.type).toLowerCase();
-    return `${holiday.name} on ${formatDate(holiday.date)} is marked as ${type}. Review nearby office travel before booking.`;
-  });
+  if (futureHolidays.length === 0 && activeJourneys.length === 0) {
+    return [{
+      id: "empty",
+      title: "No Suggestions Yet",
+      body: "Add tickets and company or personal leave dates to get weekend, booking-window, and travel-date suggestions.",
+      date: today,
+      priority: 99,
+      tone: "info",
+    }];
+  }
+
+  for (const holiday of futureHolidays) {
+    const holidayLabel = formatEnumLabel(holiday.type);
+    const weekday = weekdayName(holiday.date);
+    const holidayDate = formatDate(holiday.date);
+    const day = weekdayIndex(holiday.date);
+
+    if (day === 5) {
+      addSuggestion({
+        id: `${holiday.id}-friday-long-weekend`,
+        title: "Friday Long Weekend",
+        body: `${holiday.name} is on Friday, ${holidayDate}. Saturday and Sunday are already leave days, so check both outbound and return tickets early if you plan to travel.`,
+        date: holiday.date,
+        priority: 1,
+        tone: "success",
+      });
+    } else if (day === 1) {
+      addSuggestion({
+        id: `${holiday.id}-monday-long-weekend`,
+        title: "Monday Long Weekend",
+        body: `${holiday.name} is on Monday, ${holidayDate}. It extends the default Saturday-Sunday leave block, so nearby tickets may see higher demand.`,
+        date: holiday.date,
+        priority: 1,
+        tone: "success",
+      });
+    } else if (day === 4) {
+      addSuggestion({
+        id: `${holiday.id}-thursday-bridge`,
+        title: "Bridge Leave Opportunity",
+        body: `${holiday.name} is on Thursday, ${holidayDate}. Taking Friday as Personal Leave creates a Thursday-to-Sunday break.`,
+        date: holiday.date,
+        priority: 2,
+        tone: "info",
+      });
+    } else if (day === 2) {
+      addSuggestion({
+        id: `${holiday.id}-tuesday-bridge`,
+        title: "Bridge Leave Opportunity",
+        body: `${holiday.name} is on Tuesday, ${holidayDate}. Taking Monday as Personal Leave connects it with the default weekend.`,
+        date: holiday.date,
+        priority: 2,
+        tone: "info",
+      });
+    } else if (isWeekend(holiday.date)) {
+      addSuggestion({
+        id: `${holiday.id}-weekend-overlap`,
+        title: "Holiday Falls on a Weekend",
+        body: `${holiday.name} is on ${weekday}, which is already a default leave day. Confirm whether it changes your ticket plan before adding extra travel.`,
+        date: holiday.date,
+        priority: 5,
+        tone: "info",
+      });
+    } else {
+      addSuggestion({
+        id: `${holiday.id}-midweek`,
+        title: `${holidayLabel} on ${weekday}`,
+        body: `${holiday.name} is on ${holidayDate}. Review tickets around this date in case you want to shift office travel.`,
+        date: holiday.date,
+        priority: 4,
+        tone: "info",
+      });
+    }
+
+    for (const journey of activeJourneys) {
+      const route = journeyRouteLabel(journey, routeById.get(journey.routeId));
+      const travelGap = daysBetween(holiday.date, journey.travelDate);
+      const bookingGap = daysBetween(holiday.date, journey.bookingOpenDate);
+
+      if (travelGap === 0) {
+        addSuggestion({
+          id: `${holiday.id}-${journey.id}-same-travel`,
+          title: holiday.type === "PERSONAL_LEAVE" ? "Leave Overlaps Travel" : "Holiday on Travel Date",
+          body: `${holiday.name} is on the same day as your ${route} ticket. Confirm whether this ticket is still needed before booking.`,
+          date: journey.travelDate,
+          priority: 0,
+          tone: "warning",
+        });
+      } else if (Math.abs(travelGap) <= 3) {
+        const relation = travelGap > 0 ? `${travelGap} day${travelGap === 1 ? "" : "s"} before` : `${Math.abs(travelGap)} day${Math.abs(travelGap) === 1 ? "" : "s"} after`;
+        addSuggestion({
+          id: `${holiday.id}-${journey.id}-near-travel`,
+          title: "Holiday Near Travel Date",
+          body: `${holiday.name} is ${relation} your ${route} travel date. Book earlier or recheck the travel date if plans may shift.`,
+          date: minDate(holiday.date, journey.travelDate),
+          priority: 2,
+          tone: "warning",
+        });
+      }
+
+      if (bookingGap === 0) {
+        addSuggestion({
+          id: `${holiday.id}-${journey.id}-same-booking`,
+          title: "Booking Opens on Leave Day",
+          body: `Booking for ${route} opens on ${holiday.name}. Keep an in-app reminder enabled so the booking window is not missed.`,
+          date: journey.bookingOpenDate,
+          priority: 0,
+          tone: "warning",
+        });
+      } else if (Math.abs(bookingGap) <= 1) {
+        addSuggestion({
+          id: `${holiday.id}-${journey.id}-near-booking`,
+          title: "Holiday Near Booking Window",
+          body: `${holiday.name} is close to the booking-open date for ${route}. Check reminders and be ready before the window opens.`,
+          date: minDate(holiday.date, journey.bookingOpenDate),
+          priority: 2,
+          tone: "info",
+        });
+      }
+    }
+  }
+
+  for (const journey of activeJourneys) {
+    const route = journeyRouteLabel(journey, routeById.get(journey.routeId));
+
+    if (isWeekend(journey.travelDate)) {
+      addSuggestion({
+        id: `${journey.id}-weekend-travel`,
+        title: "Travel Date Is a Default Leave Day",
+        body: `${route} is scheduled on ${weekdayName(journey.travelDate)}, which is already a Saturday/Sunday leave day. Confirm the ticket is still required.`,
+        date: journey.travelDate,
+        priority: 3,
+        tone: "info",
+      });
+    }
+
+    if (isWeekend(journey.bookingOpenDate)) {
+      addSuggestion({
+        id: `${journey.id}-weekend-booking`,
+        title: "Booking Opens on a Weekend",
+        body: `Booking for ${route} opens on ${weekdayName(journey.bookingOpenDate)}. Since weekends are default leave days, keep an in-app reminder enabled.`,
+        date: journey.bookingOpenDate,
+        priority: 1,
+        tone: "warning",
+      });
+    }
+
+    if (["PLANNED", "BOOKING_WINDOW_OPEN"].includes(journey.status) && daysBetween(today, journey.bookingOpenDate) <= 7 && daysBetween(today, journey.bookingOpenDate) >= 0) {
+      addSuggestion({
+        id: `${journey.id}-booking-soon`,
+        title: "Booking Window Coming Up",
+        body: `${route} opens for booking on ${formatDate(journey.bookingOpenDate)}. Keep at least one reminder channel enabled for this ticket.`,
+        date: journey.bookingOpenDate,
+        priority: 1,
+        tone: "warning",
+      });
+    }
+  }
+
+  for (let index = 0; index < futureHolidays.length - 1; index += 1) {
+    const current = futureHolidays[index];
+    const next = futureHolidays[index + 1];
+    const gap = daysBetween(current.date, next.date);
+
+    if (gap > 0 && gap <= 4) {
+      addSuggestion({
+        id: `${current.id}-${next.id}-cluster`,
+        title: "Holiday Cluster",
+        body: `${current.name} and ${next.name} are ${gap} day${gap === 1 ? "" : "s"} apart. Check whether one ticket can cover both dates or if return tickets need earlier booking.`,
+        date: current.date,
+        priority: 2,
+        tone: "success",
+      });
+    }
+  }
+
+  return suggestions
+    .sort((a, b) => a.priority - b.priority || a.date.localeCompare(b.date) || a.title.localeCompare(b.title))
+    .slice(0, 10);
+}
+
+function weekdayIndex(dateOnly: string) {
+  return new Date(`${dateOnly}T12:00:00.000Z`).getDay();
+}
+
+function weekdayName(dateOnly: string) {
+  return new Intl.DateTimeFormat("en-IN", { weekday: "long" }).format(new Date(`${dateOnly}T12:00:00.000Z`));
+}
+
+function isWeekend(dateOnly: string) {
+  const day = weekdayIndex(dateOnly);
+  return day === 0 || day === 6;
+}
+
+function minDate(first: string, second: string) {
+  return first <= second ? first : second;
 }
 
 function optionalString(value: FormDataEntryValue | null) {
