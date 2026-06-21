@@ -6,7 +6,7 @@ import { useState } from "react";
 type AuthMode = "firstSignup" | "login" | "resetPassword" | "missingDatabase";
 
 export function AuthScreen({ mode, allowSignups }: { mode: AuthMode; allowSignups: boolean }) {
-  const [view, setView] = useState<"login" | "signup" | "reset">(
+  const [view, setView] = useState<"login" | "signup" | "reset" | "forgot">(
     mode === "firstSignup" ? "signup" : mode === "resetPassword" ? "reset" : "login",
   );
   const [message, setMessage] = useState<string | null>(null);
@@ -31,6 +31,27 @@ export function AuthScreen({ mode, allowSignups }: { mode: AuthMode; allowSignup
     }
 
     window.location.reload();
+  }
+
+  async function submitForgotPassword(formData: FormData) {
+    setBusy(true);
+    setMessage(null);
+
+    const response = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.fromEntries(formData.entries())),
+    });
+    const data = await response.json();
+    setBusy(false);
+
+    if (!response.ok) {
+      setMessage(data.error ?? "Could not send reset email.");
+      return;
+    }
+
+    setMessage(data.message ?? "If that account exists, a reset email has been sent.");
+    setView("login");
   }
 
   if (mode === "missingDatabase") {
@@ -58,11 +79,26 @@ export function AuthScreen({ mode, allowSignups }: { mode: AuthMode; allowSignup
           <button disabled={busy} className="inline-flex h-11 items-center justify-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white">
             Sign in
           </button>
+          <button type="button" onClick={() => setView("forgot")} className="text-sm font-semibold text-slate-700">
+            Forgot password?
+          </button>
           {allowSignups && (
             <button type="button" onClick={() => setView("signup")} className="text-sm font-semibold text-slate-700">
               Create an account
             </button>
           )}
+        </form>
+      )}
+
+      {view === "forgot" && (
+        <form action={submitForgotPassword} className="grid gap-4">
+          <AuthInput icon={Mail} name="email" type="email" label="Email" />
+          <button disabled={busy} className="inline-flex h-11 items-center justify-center rounded-md bg-slate-950 px-4 text-sm font-semibold text-white">
+            Send reset email
+          </button>
+          <button type="button" onClick={() => setView("login")} className="text-sm font-semibold text-slate-700">
+            Back to sign in
+          </button>
         </form>
       )}
 

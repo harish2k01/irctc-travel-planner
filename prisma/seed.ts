@@ -15,6 +15,15 @@ async function main() {
     create: { id: "global", allowSignups: true },
   });
 
+  await prisma.user.deleteMany({
+    where: {
+      OR: [
+        { id: "demo-user" },
+        { email: "demo@commuterail.in" },
+      ],
+    },
+  });
+
   await prisma.train.deleteMany({
     where: {
       trainNumber: { in: previousSampleTrainNumbers },

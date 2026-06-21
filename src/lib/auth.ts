@@ -74,13 +74,45 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     return null;
   }
 
+  const user = session.user.role === "ADMIN"
+    ? session.user
+    : await ensureAdminExists(session.user);
+
   return {
-    id: session.user.id,
-    email: session.user.email,
-    name: session.user.name ?? undefined,
-    role: session.user.role,
-    mustResetPassword: session.user.mustResetPassword,
+    id: user.id,
+    email: user.email,
+    name: user.name ?? undefined,
+    role: user.role,
+    mustResetPassword: user.mustResetPassword,
   };
+}
+
+async function ensureAdminExists(user: {
+  id: string;
+  email: string;
+  name: string | null;
+  role: "ADMIN" | "USER";
+  mustResetPassword: boolean;
+}) {
+  if (user.role === "ADMIN") {
+    return user;
+  }
+
+  const activeAdminCount = await prisma.user.count({
+    where: {
+      role: "ADMIN",
+      isActive: true,
+    },
+  });
+
+  if (activeAdminCount > 0) {
+    return user;
+  }
+
+  return prisma.user.update({
+    where: { id: user.id },
+    data: { role: "ADMIN" },
+  });
 }
 
 export async function requireUser() {
