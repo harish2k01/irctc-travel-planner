@@ -27,7 +27,6 @@ import {
   Train,
   Trash2,
   Upload,
-  UserCircle,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -69,7 +68,6 @@ const tabs = [
   { id: "holidays", label: "Holidays", icon: MapPin },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "settings", label: "Admin Settings", icon: Settings },
-  { id: "account", label: "Account", icon: UserCircle },
 ] as const;
 
 const statusColumns: JourneyStatus[] = [
@@ -466,8 +464,7 @@ export function TravelPlannerApp({
             <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
               <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-slate-500">Current section</p>
-                  <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">
+                  <h1 className="text-2xl font-semibold tracking-normal text-slate-950">
                     {activeTabDetails.label}
                   </h1>
                 </div>
@@ -524,9 +521,6 @@ export function TravelPlannerApp({
             onSettingsChange={setSettings}
             onUsersChange={setUsers}
           />
-        )}
-        {activeTab === "account" && (
-          <AccountPanel currentUser={currentUser} />
         )}
           </main>
         </div>
@@ -1276,32 +1270,6 @@ function SettingsPanel({
           ))}
         </div>
       </Panel>
-    </section>
-  );
-}
-
-function AccountPanel({
-  currentUser,
-}: {
-  currentUser: Props["currentUser"];
-}) {
-  return (
-    <section className="grid gap-5 lg:grid-cols-[0.75fr_1.25fr]">
-      <Panel title="Account" action={currentUser.role === "ADMIN" ? "Admin" : "User"}>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-sm font-medium text-slate-500">Signed in as</p>
-          <p className="mt-1 text-base font-semibold text-slate-950">{currentUser.email}</p>
-          {currentUser.name && <p className="mt-1 text-sm text-slate-600">{currentUser.name}</p>}
-        </div>
-      </Panel>
-
-      {currentUser.role !== "ADMIN" && (
-        <Panel title="Admin settings" action="Restricted">
-          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-600">
-            User management and signup controls are available to admin users only.
-          </div>
-        </Panel>
-      )}
     </section>
   );
 }
