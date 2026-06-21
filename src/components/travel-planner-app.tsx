@@ -26,6 +26,7 @@ import {
   Train,
   Trash2,
   Upload,
+  UserPlus,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -1275,48 +1276,76 @@ function SettingsPanel({
   }
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-      <Panel title="Access settings" action={settings.allowSignups ? "Signups on" : "Signups off"}>
-        <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-800">
-          Allow public signups
-          <input
-            type="checkbox"
-            checked={settings.allowSignups}
-            onChange={(event) => updateSettings({ allowSignups: event.target.checked })}
-            className="h-5 w-5"
-          />
-        </label>
-        {notice && (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-            {notice}
-          </div>
-        )}
-      </Panel>
+    <section className="grid gap-5">
+      {notice && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+          {notice}
+        </div>
+      )}
 
-      <Panel title="Reminder settings" action="Email, Discord, in-app">
-        <div className="grid gap-3">
+      <div className="grid items-start gap-5 xl:grid-cols-3">
+        <Panel title="Access" action={settings.allowSignups ? "Signups on" : "Signups off"}>
           <SettingToggle
-            icon={Mail}
-            label="Email reminders"
-            checked={settings.reminderEmailEnabled}
-            onChange={(checked) => updateSettings({ reminderEmailEnabled: checked })}
+            icon={UserPlus}
+            label="Allow public signups"
+            checked={settings.allowSignups}
+            onChange={(checked) => updateSettings({ allowSignups: checked })}
           />
-          <SettingToggle
-            icon={MessageCircle}
-            label="Discord reminders"
-            checked={settings.reminderDiscordEnabled}
-            onChange={(checked) => updateSettings({ reminderDiscordEnabled: checked })}
-          />
-          <SettingToggle
-            icon={Bell}
-            label="In-app reminders"
-            checked={settings.reminderInAppEnabled}
-            onChange={(checked) => updateSettings({ reminderInAppEnabled: checked })}
-          />
+        </Panel>
+
+        <Panel title="Reminder channels" action="Global defaults">
+          <div className="grid gap-3">
+            <SettingToggle
+              icon={Mail}
+              label="Email reminders"
+              checked={settings.reminderEmailEnabled}
+              onChange={(checked) => updateSettings({ reminderEmailEnabled: checked })}
+            />
+            <SettingToggle
+              icon={MessageCircle}
+              label="Discord reminders"
+              checked={settings.reminderDiscordEnabled}
+              onChange={(checked) => updateSettings({ reminderDiscordEnabled: checked })}
+            />
+            <SettingToggle
+              icon={Bell}
+              label="In-app reminders"
+              checked={settings.reminderInAppEnabled}
+              onChange={(checked) => updateSettings({ reminderInAppEnabled: checked })}
+            />
+          </div>
+        </Panel>
+
+        <Panel title="Reminder schedule" action="Booking window">
+          <div className="grid gap-3">
+            <SettingToggle
+              icon={CalendarDays}
+              label="7 days before booking opens"
+              checked={settings.reminderSevenDaysEnabled}
+              onChange={(checked) => updateSettings({ reminderSevenDaysEnabled: checked })}
+            />
+            <SettingToggle
+              icon={CalendarDays}
+              label="1 day before booking opens"
+              checked={settings.reminderOneDayEnabled}
+              onChange={(checked) => updateSettings({ reminderOneDayEnabled: checked })}
+            />
+            <SettingToggle
+              icon={Clock}
+              label="Booking-open day"
+              checked={settings.reminderBookingOpenEnabled}
+              onChange={(checked) => updateSettings({ reminderBookingOpenEnabled: checked })}
+            />
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="Delivery configuration" action="Email and Discord">
+        <div className="grid gap-4 lg:grid-cols-3">
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             SMTP URL
             <input
-              type="text"
+              type="password"
               defaultValue={settings.smtpUrl}
               onBlur={(event) => updateSettings({ smtpUrl: event.target.value.trim() })}
               placeholder="smtp://user:password@mail.example.com:587"
@@ -1336,33 +1365,13 @@ function SettingsPanel({
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Discord webhook URL
             <input
-              type="url"
+              type="password"
               defaultValue={settings.discordWebhookUrl}
               onBlur={(event) => updateSettings({ discordWebhookUrl: event.target.value.trim() })}
               placeholder="https://discord.com/api/webhooks/..."
               className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
             />
           </label>
-        </div>
-        <div className="mt-4 grid gap-3">
-          <SettingToggle
-            icon={CalendarDays}
-            label="7 days before booking opens"
-            checked={settings.reminderSevenDaysEnabled}
-            onChange={(checked) => updateSettings({ reminderSevenDaysEnabled: checked })}
-          />
-          <SettingToggle
-            icon={CalendarDays}
-            label="1 day before booking opens"
-            checked={settings.reminderOneDayEnabled}
-            onChange={(checked) => updateSettings({ reminderOneDayEnabled: checked })}
-          />
-          <SettingToggle
-            icon={Clock}
-            label="Booking-open day"
-            checked={settings.reminderBookingOpenEnabled}
-            onChange={(checked) => updateSettings({ reminderBookingOpenEnabled: checked })}
-          />
         </div>
       </Panel>
 
