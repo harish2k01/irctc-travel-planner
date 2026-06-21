@@ -1,15 +1,26 @@
 import nodemailer from "nodemailer";
+import { getAppSettings } from "@/lib/settings";
+
+async function getMailConfig() {
+  const settings = await getAppSettings();
+
+  return {
+    smtpUrl: settings.smtpUrl ?? process.env.SMTP_URL,
+    emailFrom: settings.emailFrom ?? process.env.EMAIL_FROM ?? "IRCTC Travel Planner <noreply@example.com>",
+  };
+}
 
 export async function sendTemporaryPasswordEmail(email: string, temporaryPassword: string) {
-  if (!process.env.SMTP_URL) {
-    return { sent: false, reason: "SMTP_URL is not configured." };
+  const { smtpUrl, emailFrom } = await getMailConfig();
+
+  if (!smtpUrl) {
+    return { sent: false, reason: "SMTP URL is not configured." };
   }
 
-  const transporter = nodemailer.createTransport(process.env.SMTP_URL);
-  const from = process.env.EMAIL_FROM ?? "IRCTC Travel Planner <noreply@example.com>";
+  const transporter = nodemailer.createTransport(smtpUrl);
 
   await transporter.sendMail({
-    from,
+    from: emailFrom,
     to: email,
     subject: "Your IRCTC Travel Planner temporary password",
     text: [
@@ -25,15 +36,16 @@ export async function sendTemporaryPasswordEmail(email: string, temporaryPasswor
 }
 
 export async function sendPasswordResetEmail(email: string, temporaryPassword: string) {
-  if (!process.env.SMTP_URL) {
-    return { sent: false, reason: "SMTP_URL is not configured." };
+  const { smtpUrl, emailFrom } = await getMailConfig();
+
+  if (!smtpUrl) {
+    return { sent: false, reason: "SMTP URL is not configured." };
   }
 
-  const transporter = nodemailer.createTransport(process.env.SMTP_URL);
-  const from = process.env.EMAIL_FROM ?? "IRCTC Travel Planner <noreply@example.com>";
+  const transporter = nodemailer.createTransport(smtpUrl);
 
   await transporter.sendMail({
-    from,
+    from: emailFrom,
     to: email,
     subject: "Reset your IRCTC Travel Planner password",
     text: [

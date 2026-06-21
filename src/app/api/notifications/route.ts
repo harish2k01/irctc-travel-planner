@@ -16,6 +16,15 @@ export async function GET() {
     getAppSettings(),
   ]);
   const reminders = journeys.flatMap((journey): ReturnType<typeof buildJourneyReminders> => {
+    const hasEnabledChannel =
+      (settings.reminderEmailEnabled && journey.reminderEmailEnabled) ||
+      (settings.reminderDiscordEnabled && journey.reminderDiscordEnabled) ||
+      (settings.reminderInAppEnabled && journey.reminderInAppEnabled);
+
+    if (!hasEnabledChannel) {
+      return [];
+    }
+
     const item: Journey = {
       id: journey.id,
       routeId: journey.routeId,
@@ -25,6 +34,9 @@ export async function GET() {
       preferredClass: journey.preferredClass,
       status: journey.status,
       remindersEnabled: journey.remindersEnabled,
+      reminderEmailEnabled: journey.reminderEmailEnabled,
+      reminderDiscordEnabled: journey.reminderDiscordEnabled,
+      reminderInAppEnabled: journey.reminderInAppEnabled,
     };
 
     return buildJourneyReminders(item);

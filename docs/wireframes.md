@@ -8,13 +8,13 @@
 +--------------------------------------------------------------+
 | [Dashboard] [Planner] [Tracker] [Calendar] [Holidays] [...]   |
 +--------------------------------------------------------------+
-| [Book Today] [Opens Tomorrow] [Waitlist Risk] [Trips]        |
+| [Book Today] [Opens Tomorrow] [Tickets To Book]              |
 +--------------------------------------------------------------+
 | Upcoming journeys                         | Booking windows   |
 | - Train, route, travel date, status       | - Train, open date |
 | - Train, route, travel date, status       | - Train, open date |
 +-------------------------------------------+------------------+
-| Pending bookings | Confirmed bookings | Upcoming holidays     |
+| Pending bookings | Booked tickets | Upcoming holidays         |
 +--------------------------------------------------------------+
 ```
 
@@ -22,13 +22,12 @@
 
 ```text
 +-----------------------------------+--------------------------+
-| Track ticket                      | Reminder settings        |
-| Train select                      | 7 days before            |
-| Travel date | Class               | 1 day before             |
-| Direction    | Recurrence         | Booking open             |
-| Notes                             | Notification toggles     |
-| [Add journey]                     | Email Push In-app        |
-+-----------------------------------+--------------------------+
+| Track ticket                                                 |
+| PNR | Source | Destination | Travel date                    |
+| Reminder channels: Email Discord In-app                      |
+| Notes                                                        |
+| [Add ticket]                                                 |
++--------------------------------------------------------------+
 ```
 
 ## Tracker
@@ -56,9 +55,9 @@
 
 ```text
 +--------------------------------------------------------------+
-| [Average Fare] [Waitlist Frequency] [Success Rate] [Routes]   |
+| [Upcoming Tickets] [Tickets To Book] [Booked Tickets] [Routes]|
 +--------------------------------------------------------------+
-| Trips per month chart          | Ticket status trend chart     |
+| Trips per month chart                                        |
 +--------------------------------------------------------------+
 | Most used routes                                             |
 +--------------------------------------------------------------+

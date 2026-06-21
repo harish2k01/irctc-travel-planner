@@ -11,7 +11,7 @@
    - Quick ticket tracking
    - Manual source and destination entry
    - PNR-backed ticket detail sync
-   - Notes and per-ticket reminder toggle
+   - Notes and per-ticket reminder channel toggles
    - Generated booking-open date and reminder dates
 3. Tracker
    - Kanban columns by journey state
@@ -31,8 +31,8 @@
 6. Analytics
    - Trips per month
    - Most-used routes
-   - Waitlist frequency
-   - Booking success rate
+   - Tickets to book
+   - Booked ticket count
 
 ## Object Model
 

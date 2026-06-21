@@ -50,6 +50,9 @@ export type Journey = {
   bookingDate?: string;
   waitlistPosition?: number;
   remindersEnabled?: boolean;
+  reminderEmailEnabled?: boolean;
+  reminderDiscordEnabled?: boolean;
+  reminderInAppEnabled?: boolean;
 };
 
 export type Holiday = {
@@ -68,7 +71,6 @@ export type NotificationPreference = {
 export type AnalyticsPoint = {
   month: string;
   trips: number;
-  waitlisted: number;
 };
 
 export type Reminder = {

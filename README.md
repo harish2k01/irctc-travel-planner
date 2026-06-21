@@ -26,9 +26,9 @@ Open `http://localhost:3000`.
 
 The app starts with a first-admin signup screen when PostgreSQL is configured and no users exist.
 
-Admins can disable public signups from Settings, create users, edit user access, and delete users. When SMTP is configured, newly created users receive a temporary password by email and are forced to reset it on first login.
+Admins can disable public signups from Settings, create users, edit user access, and delete users. When SMTP is configured in Admin Settings, newly created users receive a temporary password by email and are forced to reset it on first login.
 
-Reminder channels and reminder timing are controlled from Admin Settings. Email, Discord webhook, and in-app reminders can be enabled globally, while each tracked ticket also has its own reminder toggle.
+Reminder channels, reminder timing, SMTP URL, email sender, and Discord webhook URL are controlled from Admin Settings. Email, Discord, and in-app reminders can be enabled globally, while each tracked ticket has its own per-channel reminder toggles.
 
 ## Run With PostgreSQL
 
@@ -104,11 +104,10 @@ kubectl -n irctc-travel-planner create secret generic irctc-travel-planner-secre
   --from-literal=POSTGRES_DB=irctc \
   --from-literal=POSTGRES_USER=irctc \
   --from-literal=POSTGRES_PASSWORD='<strong-password>' \
-  --from-literal=DATABASE_URL='postgresql://irctc:<strong-password>@irctc-travel-planner-postgres:5432/irctc?schema=public' \
-  --from-literal=SMTP_URL='smtp://user:<smtp-password>@mail.example.com:587'
+  --from-literal=DATABASE_URL='postgresql://irctc:<strong-password>@irctc-travel-planner-postgres:5432/irctc?schema=public'
 ```
 
-If `SMTP_URL` is omitted, admin-created users still get a temporary password, but it is shown once in the Settings screen instead of being emailed.
+Configure SMTP URL and email sender from Admin Settings after deployment. `SMTP_URL` and `EMAIL_FROM` environment variables are supported only as fallback defaults. If SMTP is not configured, admin-created users still get a temporary password, but it is shown once in the Settings screen instead of being emailed.
 
 The manifest image is set to:
 

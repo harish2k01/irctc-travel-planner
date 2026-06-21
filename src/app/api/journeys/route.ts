@@ -141,10 +141,13 @@ export async function POST(request: Request) {
         notes: normalized.notes,
         pnr: normalized.pnr,
         remindersEnabled: normalized.remindersEnabled ?? true,
+        reminderEmailEnabled: normalized.reminderEmailEnabled ?? true,
+        reminderDiscordEnabled: normalized.reminderDiscordEnabled ?? false,
+        reminderInAppEnabled: normalized.reminderInAppEnabled ?? true,
       },
     });
 
-    if (journey.remindersEnabled) {
+    if (journey.remindersEnabled && (journey.reminderEmailEnabled || journey.reminderDiscordEnabled || journey.reminderInAppEnabled)) {
       await tx.journeyReminder.createMany({
         data: buildJourneyReminders({
           ...normalized,

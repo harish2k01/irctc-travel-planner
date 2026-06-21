@@ -12,6 +12,8 @@ const settingsSchema = z.object({
   reminderSevenDaysEnabled: z.boolean().optional(),
   reminderOneDayEnabled: z.boolean().optional(),
   reminderBookingOpenEnabled: z.boolean().optional(),
+  smtpUrl: z.string().max(500).or(z.literal("")).optional(),
+  emailFrom: z.string().max(200).or(z.literal("")).optional(),
   discordWebhookUrl: z.string().url().or(z.literal("")).optional(),
 });
 
@@ -33,6 +35,8 @@ export async function PATCH(request: Request) {
     where: { id: "global" },
     data: {
       ...parsed.data,
+      smtpUrl: parsed.data.smtpUrl === "" ? null : parsed.data.smtpUrl,
+      emailFrom: parsed.data.emailFrom === "" ? null : parsed.data.emailFrom,
       discordWebhookUrl: parsed.data.discordWebhookUrl === "" ? null : parsed.data.discordWebhookUrl,
     },
   });

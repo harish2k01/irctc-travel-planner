@@ -56,6 +56,9 @@ async function loadInitialData(userId: string): Promise<InitialData> {
       bookingDate: journey.bookingDate ? dateOnly(journey.bookingDate) : undefined,
       waitlistPosition: journey.waitlistPosition ?? undefined,
       remindersEnabled: journey.remindersEnabled,
+      reminderEmailEnabled: journey.reminderEmailEnabled,
+      reminderDiscordEnabled: journey.reminderDiscordEnabled,
+      reminderInAppEnabled: journey.reminderInAppEnabled,
     })),
     routes: dbRoutes.map((route) => ({
       id: route.id,
@@ -133,7 +136,9 @@ export default async function Home() {
         reminderSevenDaysEnabled: settings.reminderSevenDaysEnabled,
         reminderOneDayEnabled: settings.reminderOneDayEnabled,
         reminderBookingOpenEnabled: settings.reminderBookingOpenEnabled,
-        discordWebhookUrl: settings.discordWebhookUrl ?? "",
+        smtpUrl: currentUser.role === "ADMIN" ? settings.smtpUrl ?? "" : "",
+        emailFrom: currentUser.role === "ADMIN" ? settings.emailFrom ?? "" : "",
+        discordWebhookUrl: currentUser.role === "ADMIN" ? settings.discordWebhookUrl ?? "" : "",
       }}
       initialUsers={users.map((user) => ({
         ...user,

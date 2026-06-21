@@ -28,6 +28,9 @@ export const createJourneySchema = z.object({
   pnr: z.string().regex(/^\d{10}$/),
   notes: z.string().max(500).optional(),
   remindersEnabled: z.boolean().optional(),
+  reminderEmailEnabled: z.boolean().optional(),
+  reminderDiscordEnabled: z.boolean().optional(),
+  reminderInAppEnabled: z.boolean().optional(),
 }).refine((input) => Boolean(input.routeId || (input.sourceCode && input.destinationCode)), {
   message: "Provide an existing route or source and destination station codes.",
   path: ["sourceCode"],
@@ -54,6 +57,9 @@ export const updateJourneyStatusSchema = z.object({
   bookingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   waitlistPosition: z.number().int().positive().optional(),
   remindersEnabled: z.boolean().optional(),
+  reminderEmailEnabled: z.boolean().optional(),
+  reminderDiscordEnabled: z.boolean().optional(),
+  reminderInAppEnabled: z.boolean().optional(),
 });
 
 export const createHolidaySchema = z.object({

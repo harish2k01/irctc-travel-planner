@@ -101,6 +101,8 @@ model AppSettings {
   reminderSevenDaysEnabled   Boolean  @default(true)
   reminderOneDayEnabled      Boolean  @default(true)
   reminderBookingOpenEnabled Boolean  @default(true)
+  smtpUrl                    String?
+  emailFrom                  String?
   discordWebhookUrl          String?
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
@@ -159,6 +161,9 @@ model Journey {
   farePaid         Decimal?          @db.Decimal(10, 2)
   waitlistPosition Int?
   remindersEnabled Boolean           @default(true)
+  reminderEmailEnabled Boolean       @default(true)
+  reminderDiscordEnabled Boolean     @default(false)
+  reminderInAppEnabled Boolean       @default(true)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)

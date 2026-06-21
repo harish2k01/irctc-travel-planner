@@ -13,9 +13,8 @@ export async function GET() {
         monthly: [],
         totals: {
           totalTrips: 0,
+          ticketsToBook: 0,
           bookedTrips: 0,
-          waitlistedTrips: 0,
-          bookingSuccessRate: 0,
         },
       },
       source: "empty",
@@ -25,19 +24,16 @@ export async function GET() {
   const user = await requireUser();
   const journeys = await prisma.journey.findMany({ where: { userId: user.id }, orderBy: { travelDate: "asc" } });
   const totalTrips = journeys.length;
-  const bookedTrips = journeys.filter((journey) =>
-    ["BOOKED", "CONFIRMED", "RAC", "WAITLISTED", "COMPLETED"].includes(journey.status),
-  ).length;
-  const waitlistedTrips = journeys.filter((journey) => journey.status === "WAITLISTED").length;
+  const ticketsToBook = journeys.filter((journey) => ["PLANNED", "BOOKING_WINDOW_OPEN"].includes(journey.status)).length;
+  const bookedTrips = journeys.filter((journey) => ["BOOKED", "CONFIRMED"].includes(journey.status)).length;
   const monthly = Array.from(
     journeys.reduce((map, journey) => {
       const month = journey.travelDate.toISOString().slice(0, 7);
-      const item = map.get(month) ?? { month, trips: 0, waitlisted: 0 };
+      const item = map.get(month) ?? { month, trips: 0 };
       item.trips += 1;
-      item.waitlisted += ["WAITLISTED", "RAC"].includes(journey.status) ? 1 : 0;
       map.set(month, item);
       return map;
-    }, new Map<string, { month: string; trips: number; waitlisted: number }>()),
+    }, new Map<string, { month: string; trips: number }>()),
   ).map(([, item]) => item);
 
   return NextResponse.json({
@@ -45,9 +41,8 @@ export async function GET() {
       monthly,
       totals: {
         totalTrips,
+        ticketsToBook,
         bookedTrips,
-        waitlistedTrips,
-        bookingSuccessRate: totalTrips > 0 ? Math.round((bookedTrips / totalTrips) * 100) : 0,
       },
     },
     source: "database",

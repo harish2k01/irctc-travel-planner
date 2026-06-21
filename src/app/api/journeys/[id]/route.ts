@@ -72,9 +72,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       },
     });
 
-    if (bookingOpenDate || parsed.data.remindersEnabled !== undefined) {
+    if (
+      bookingOpenDate ||
+      parsed.data.remindersEnabled !== undefined ||
+      parsed.data.reminderEmailEnabled !== undefined ||
+      parsed.data.reminderDiscordEnabled !== undefined ||
+      parsed.data.reminderInAppEnabled !== undefined
+    ) {
       await tx.journeyReminder.deleteMany({ where: { journeyId: id } });
-      if (journey.remindersEnabled) {
+      if (journey.remindersEnabled && (journey.reminderEmailEnabled || journey.reminderDiscordEnabled || journey.reminderInAppEnabled)) {
         const nextBookingOpenDate = bookingOpenDate ?? journey.bookingOpenDate.toISOString().slice(0, 10);
         await tx.journeyReminder.createMany({
           data: buildJourneyReminders({
