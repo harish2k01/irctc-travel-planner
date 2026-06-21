@@ -153,6 +153,7 @@ export function TravelPlannerApp({
   const [users, setUsers] = useState(initialUsers);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const visibleTabs = currentUser.role === "ADMIN" ? tabs : tabs.filter((tab) => tab.id !== "settings");
+  const activeTabDetails = visibleTabs.find((tab) => tab.id === activeTab) ?? visibleTabs[0];
 
   const upcomingJourneys = useMemo(
     () => journeys.filter((journey) => isWithinNextDays(journey.travelDate, today, 30)),
@@ -390,11 +391,18 @@ export function TravelPlannerApp({
         <aside
           className={cn(
             "sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200",
-            sidebarCollapsed ? "w-[76px]" : "w-[76px] lg:w-64",
+            sidebarCollapsed ? "w-24" : "w-24 lg:w-72",
           )}
           aria-label="Primary navigation"
         >
           <div className="flex h-16 items-center gap-2 border-b border-slate-200 px-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-950 text-white">
+              <Train className="h-5 w-5" aria-hidden />
+            </div>
+            <div className={cn("min-w-0 flex-1", sidebarCollapsed && "hidden", !sidebarCollapsed && "hidden lg:block")}>
+              <p className="truncate text-sm font-semibold text-slate-950">IRCTC Travel Planner</p>
+              <p className="truncate text-xs font-medium text-slate-500">Ticket tracker</p>
+            </div>
             <button
               type="button"
               onClick={() => setSidebarCollapsed((current) => !current)}
@@ -404,10 +412,6 @@ export function TravelPlannerApp({
             >
               <Menu className="h-5 w-5" aria-hidden />
             </button>
-            <div className={cn("min-w-0", sidebarCollapsed && "hidden", !sidebarCollapsed && "hidden lg:block")}>
-              <p className="truncate text-sm font-semibold text-slate-950">IRCTC Travel Planner</p>
-              <p className="truncate text-xs font-medium text-slate-500">Ticket tracker</p>
-            </div>
           </div>
 
           <nav className="flex-1 overflow-y-auto p-3">
@@ -459,17 +463,13 @@ export function TravelPlannerApp({
 
         <div className="min-w-0 flex-1">
           <header className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
               <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-                <div className="flex items-center gap-3">
-                  <div className="grid h-11 w-11 place-items-center rounded-lg bg-slate-950 text-white">
-                    <Train className="h-6 w-6" aria-hidden />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
-                      IRCTC Travel Planner
-                    </h1>
-                  </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase text-slate-500">Current section</p>
+                  <h1 className="mt-1 text-2xl font-semibold tracking-normal text-slate-950">
+                    {activeTabDetails.label}
+                  </h1>
                 </div>
                 <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[360px]">
                   <MiniMetric label="Next 30d" value={upcomingJourneys.length.toString()} />
