@@ -1,6 +1,6 @@
 # IRCTC Travel Planner
 
-A calendar-first commute planner for working professionals who travel regularly by Indian Railways. The app helps users plan journeys, track booking windows, manage holidays/leave, and monitor travel spending.
+A calendar-first ticket tracker for working professionals who travel regularly by Indian Railways. The app helps users track journeys, booking windows, ticket status, holidays, and reminders.
 
 This is not an IRCTC booking platform. It does not automate IRCTC login, CAPTCHA solving, ticket purchase, or payment flows.
 
@@ -65,25 +65,14 @@ npm run prisma:migrate
 
 ## PNR Sync
 
-PNR sync is provider-backed. The app does not scrape IRCTC or automate IRCTC login/CAPTCHA flows. Configure a licensed PNR provider endpoint that accepts a `pnr` query parameter and returns fields such as `trainNumber`, `trainName`, `travelDate`, `preferredClass`, `sourceCode`, `sourceName`, `destinationCode`, `destinationName`, `status`, `coach`, `seat`, `farePaid`, `waitlistPosition`, and `bookingDate`.
+PNR sync is provider-backed. The app does not scrape IRCTC or automate IRCTC login/CAPTCHA flows. Configure a licensed PNR provider endpoint, such as RailRadar, that accepts a `pnr` query parameter or a `{pnr}` path placeholder and returns fields such as `trainNumber`, `trainName`, `travelDate`, `preferredClass`, `sourceCode`, `sourceName`, `destinationCode`, `destinationName`, `status`, `coach`, `seat`, `waitlistPosition`, and `bookingDate`.
 
 ```bash
-PNR_PROVIDER_URL="https://provider.example.com/pnr"
+PNR_PROVIDER_URL="https://provider.example.com/pnr/{pnr}"
 PNR_PROVIDER_API_KEY="optional-provider-token"
 ```
 
 If no provider is configured, the Sync button validates the PNR and reports that sync is not configured.
-
-## Live Train Search
-
-Live train search is also provider-backed. The app does not scrape IRCTC search results. Configure a licensed train-search provider that accepts a `q` query parameter, and optionally `sourceCode`, `destinationCode`, and `travelDate`, returning either an array or `{ "data": [...] }` / `{ "trains": [...] }` with `trainNumber`, `trainName`, route fields, and `preferredClasses`.
-
-```bash
-TRAIN_SEARCH_PROVIDER_URL="https://provider.example.com/trains/search"
-TRAIN_SEARCH_PROVIDER_API_KEY="optional-provider-token"
-```
-
-If no provider is configured, users can still manually enter train number, train name, source, destination, and travel date.
 
 ## Kubernetes
 

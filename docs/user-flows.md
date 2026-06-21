@@ -19,7 +19,7 @@
 4. Open IRCTC manually or use a Phase 2 deep link.
 5. Return to Tracker.
 6. Mark status as Booked, Waitlisted, RAC, or Confirmed.
-7. Add PNR, coach/seat, fare, and ticket attachment.
+7. Add PNR, coach/seat, waitlist position, and ticket attachment.
 
 ## Manage Holidays and Leave
 
@@ -32,7 +32,7 @@
 ## Review Travel History
 
 1. Open Analytics.
-2. Review monthly trip count and spend.
+2. Review monthly trip count and ticket status trends.
 3. Compare waitlist frequency and success rate.
 4. Identify most-used routes.
 5. Export travel history in Phase 2.

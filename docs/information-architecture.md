@@ -9,12 +9,13 @@
    - Upcoming holidays and long-weekend signals
 2. Planner
    - Quick journey creation
-   - Origin/destination through preferred train
-   - Preferred class, direction, recurrence, notes
+   - Manual train, source, and destination entry
+   - PNR-backed ticket detail sync
+   - Preferred class and notes
    - Generated booking-open date and reminder dates
 3. Tracker
    - Kanban columns by journey state
-   - PNR, coach, seat, fare, attachment actions
+   - PNR, coach, seat, waitlist, attachment actions
 4. Calendar
    - Travel dates
    - Booking-open dates
@@ -29,11 +30,9 @@
    - CSV import and ICS sync entry points
 6. Analytics
    - Trips per month
-   - Average fare
    - Most-used routes
    - Waitlist frequency
    - Booking success rate
-   - Spend trends
 
 ## Object Model
 

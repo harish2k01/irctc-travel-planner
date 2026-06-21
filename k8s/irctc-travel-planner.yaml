@@ -13,7 +13,6 @@ data:
   EMAIL_FROM: IRCTC Travel Planner <noreply@example.com>
   OBJECT_STORAGE_BUCKET: irctc-travel-planner-attachments
   PNR_PROVIDER_URL: ""
-  TRAIN_SEARCH_PROVIDER_URL: ""
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

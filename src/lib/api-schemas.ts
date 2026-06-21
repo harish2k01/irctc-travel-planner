@@ -52,7 +52,6 @@ export const updateJourneyStatusSchema = z.object({
   coach: z.string().max(8).optional(),
   seat: z.string().max(12).optional(),
   bookingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  farePaid: z.number().nonnegative().optional(),
   waitlistPosition: z.number().int().positive().optional(),
 });
 

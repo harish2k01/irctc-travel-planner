@@ -48,7 +48,6 @@ export type Journey = {
   coach?: string;
   seat?: string;
   bookingDate?: string;
-  farePaid?: number;
   waitlistPosition?: number;
 };
 
@@ -68,7 +67,6 @@ export type NotificationPreference = {
 export type AnalyticsPoint = {
   month: string;
   trips: number;
-  spend: number;
   waitlisted: number;
 };
 

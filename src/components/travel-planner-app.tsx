@@ -15,7 +15,7 @@ import {
   Columns3,
   FileText,
   Home,
-  IndianRupee,
+  LogOut,
   Mail,
   MapPin,
   Pencil,
@@ -26,13 +26,12 @@ import {
   Train,
   Trash2,
   Upload,
+  UserCircle,
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -44,7 +43,7 @@ import {
 import { addDays, buildJourneyReminders, calculateBookingOpenDate, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
 import type { Holiday, Journey, JourneyStatus, Route, Train as TrainType } from "@/lib/types";
 import { notificationPreferences } from "@/lib/notification-preferences";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 type Props = {
   currentUser: {
@@ -69,7 +68,8 @@ const tabs = [
   { id: "calendar", label: "Calendar", icon: CalendarDays },
   { id: "holidays", label: "Holidays", icon: MapPin },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
-  { id: "settings", label: "Settings", icon: Settings },
+  { id: "settings", label: "Admin Settings", icon: Settings },
+  { id: "account", label: "Account", icon: UserCircle },
 ] as const;
 
 const statusColumns: JourneyStatus[] = [
@@ -118,18 +118,6 @@ type ManagedUser = {
   mustResetPassword: boolean;
   createdAt: string;
 };
-type TrainSearchResult = {
-  id?: string;
-  routeId?: string;
-  trainNumber: string;
-  trainName: string;
-  sourceCode?: string;
-  sourceName?: string;
-  destinationCode?: string;
-  destinationName?: string;
-  preferredClasses?: string[];
-};
-
 function LayoutIcon(props: React.ComponentProps<typeof Home>) {
   return <Home {...props} />;
 }
@@ -169,7 +157,6 @@ export function TravelPlannerApp({
     ["PLANNED", "BOOKING_WINDOW_OPEN", "WAITLISTED", "RAC"].includes(journey.status),
   );
   const confirmedBookings = journeys.filter((journey) => ["BOOKED", "CONFIRMED"].includes(journey.status));
-  const monthlySpend = currentMonthJourneys.reduce((sum, journey) => sum + (journey.farePaid ?? 0), 0);
   const reminders = journeys.flatMap(buildJourneyReminders);
 
   const routeById = new Map(routeItems.map((route) => [route.id, route]));
@@ -177,27 +164,22 @@ export function TravelPlannerApp({
 
   async function createJourney(formData: FormData) {
     const travelDate = String(formData.get("travelDate"));
-    const trainId = optionalString(formData.get("trainId"));
-    const trainQuery = String(formData.get("trainQuery") ?? "");
-    const parsedTrain = parseTrainQuery(trainQuery);
-    const trainNumber = optionalString(formData.get("trainNumber")) ?? parsedTrain.trainNumber;
-    const trainName = optionalString(formData.get("trainName")) ?? parsedTrain.trainName;
+    const trainNumber = optionalString(formData.get("trainNumber"));
+    const trainName = optionalString(formData.get("trainName"));
     const sourceCode = optionalString(formData.get("sourceCode"))?.toUpperCase();
     const sourceName = optionalString(formData.get("sourceName"));
     const destinationCode = optionalString(formData.get("destinationCode"))?.toUpperCase();
     const destinationName = optionalString(formData.get("destinationName"));
-    const existingTrain = trainId ? trainById.get(trainId) : undefined;
-    const existingRoute = existingTrain ? routeById.get(existingTrain.routeId) : undefined;
-    const routeId = existingTrain?.routeId ?? `local-route-${Date.now()}`;
-    const nextTrainId = existingTrain?.id ?? `local-train-${Date.now()}`;
-    const nextRoute: Route = existingRoute ?? {
+    const routeId = `local-route-${Date.now()}`;
+    const nextTrainId = `local-train-${Date.now()}`;
+    const nextRoute: Route = {
       id: routeId,
       originCode: sourceCode ?? "",
       originName: sourceName ?? sourceCode ?? "",
       destinationCode: destinationCode ?? "",
       destinationName: destinationName ?? destinationCode ?? "",
     };
-    const nextTrain: TrainType = existingTrain ?? {
+    const nextTrain: TrainType = {
       id: nextTrainId,
       routeId,
       trainNumber: trainNumber ?? "",
@@ -228,7 +210,6 @@ export function TravelPlannerApp({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           routeId: newJourney.routeId,
-          trainId,
           trainNumber,
           trainName,
           travelDate: newJourney.travelDate,
@@ -335,11 +316,6 @@ export function TravelPlannerApp({
     }
   }
 
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.reload();
-  }
-
   const calendarEvents = [
     ...journeys.map((journey) => ({
       id: `${journey.id}-travel`,
@@ -385,7 +361,7 @@ export function TravelPlannerApp({
             <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[360px]">
               <MiniMetric label="Next 30d" value={upcomingJourneys.length.toString()} />
               <MiniMetric label="Pending" value={pendingBookings.length.toString()} />
-              <MiniMetric label="Spend" value={formatCurrency(monthlySpend)} />
+              <MiniMetric label="Confirmed" value={confirmedBookings.length.toString()} />
             </div>
           </div>
           <nav aria-label="Primary">
@@ -409,13 +385,6 @@ export function TravelPlannerApp({
                   </button>
                 );
               })}
-              <button
-                type="button"
-                onClick={logout}
-                className="flex h-10 shrink-0 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-100"
-              >
-                {currentUser.email}
-              </button>
             </div>
           </nav>
         </div>
@@ -431,14 +400,13 @@ export function TravelPlannerApp({
             pendingBookings={pendingBookings}
             confirmedBookings={confirmedBookings}
             tripsThisMonth={currentMonthJourneys.length}
-            monthlySpend={monthlySpend}
             routeById={routeById}
             trainById={trainById}
             today={today}
           />
         )}
         {activeTab === "planner" && (
-          <Planner trains={trainItems} routeById={routeById} onCreateJourney={createJourney} />
+          <Planner onCreateJourney={createJourney} />
         )}
         {activeTab === "tracker" && (
           <Tracker
@@ -468,6 +436,9 @@ export function TravelPlannerApp({
             onUsersChange={setUsers}
           />
         )}
+        {activeTab === "account" && (
+          <AccountPanel currentUser={currentUser} />
+        )}
       </main>
     </div>
   );
@@ -481,7 +452,6 @@ function Dashboard({
   pendingBookings,
   confirmedBookings,
   tripsThisMonth,
-  monthlySpend,
   routeById,
   trainById,
   today,
@@ -493,7 +463,6 @@ function Dashboard({
   pendingBookings: Journey[];
   confirmedBookings: Journey[];
   tripsThisMonth: number;
-  monthlySpend: number;
   routeById: Map<string, Route>;
   trainById: Map<string, TrainType>;
   today: string;
@@ -504,12 +473,11 @@ function Dashboard({
 
   return (
     <>
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label="Dashboard summary">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Dashboard summary">
         <MetricCard icon={AlertTriangle} label="Book Today" value={bookToday.length.toString()} tone="red" />
         <MetricCard icon={Clock} label="Booking Opens Tomorrow" value={opensTomorrow.length.toString()} tone="amber" />
         <MetricCard icon={AlertTriangle} label="Waitlist Risk" value={waitlistRisk.length.toString()} tone="amber" />
         <MetricCard icon={CalendarDays} label="Trips This Month" value={tripsThisMonth.toString()} tone="slate" />
-        <MetricCard icon={IndianRupee} label="Travel Spend This Month" value={formatCurrency(monthlySpend)} tone="green" />
       </section>
 
       <section className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
@@ -570,22 +538,13 @@ function Dashboard({
 }
 
 function Planner({
-  trains,
-  routeById,
   onCreateJourney,
 }: {
-  trains: TrainType[];
-  routeById: Map<string, Route>;
   onCreateJourney: (formData: FormData) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [selectedTrainId, setSelectedTrainId] = useState("");
-  const [trainQuery, setTrainQuery] = useState("");
   const [trainNumber, setTrainNumber] = useState("");
   const [trainName, setTrainName] = useState("");
-  const [searchResults, setSearchResults] = useState<TrainSearchResult[]>([]);
-  const [searchMessage, setSearchMessage] = useState<string | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
   const [travelDate, setTravelDate] = useState("");
   const [preferredClass, setPreferredClass] = useState("3A");
   const [pnr, setPnr] = useState("");
@@ -594,103 +553,7 @@ function Planner({
   const [destinationCode, setDestinationCode] = useState("");
   const [destinationName, setDestinationName] = useState("");
   const [pnrMessage, setPnrMessage] = useState<string | null>(null);
-  const selectedTrain = trains.find((train) => train.id === selectedTrainId);
   const bookingOpenDate = travelDate ? calculateBookingOpenDate(travelDate) : "";
-
-  function selectTrain(train: TrainType) {
-    const route = routeById.get(train.routeId);
-    setSelectedTrainId(train.id);
-    setTrainQuery(trainSearchLabel(train, route));
-    setTrainNumber(train.trainNumber);
-    setTrainName(train.trainName);
-    setPreferredClass(train.preferredClasses[0] ?? preferredClass);
-    setSourceCode(route?.originCode ?? "");
-    setSourceName(route?.originName ?? "");
-    setDestinationCode(route?.destinationCode ?? "");
-    setDestinationName(route?.destinationName ?? "");
-    setSearchResults([]);
-    setSearchMessage(null);
-  }
-
-  function selectSearchResult(result: TrainSearchResult) {
-    setSelectedTrainId(result.id ?? "");
-    setTrainQuery(`${result.trainNumber} ${result.trainName}`.trim());
-    setTrainNumber(result.trainNumber);
-    setTrainName(result.trainName);
-    setPreferredClass(result.preferredClasses?.[0] ?? preferredClass);
-    setSourceCode(result.sourceCode?.toUpperCase() ?? sourceCode);
-    setSourceName(result.sourceName ?? sourceName);
-    setDestinationCode(result.destinationCode?.toUpperCase() ?? destinationCode);
-    setDestinationName(result.destinationName ?? destinationName);
-    setSearchResults([]);
-    setSearchMessage(null);
-  }
-
-  function updateTrainQuery(value: string) {
-    setTrainQuery(value);
-    if (value.trim().length < 2) {
-      setSearchResults([]);
-      setSearchMessage(null);
-      setIsSearching(false);
-    }
-
-    const match = trains.find((train) => trainSearchLabel(train, routeById.get(train.routeId)).toLowerCase() === value.toLowerCase());
-
-    if (match) {
-      selectTrain(match);
-      return;
-    }
-
-    const parsed = parseTrainQuery(value);
-    setSelectedTrainId("");
-    setTrainNumber(parsed.trainNumber ?? "");
-    setTrainName(parsed.trainName ?? "");
-  }
-
-  useEffect(() => {
-    const query = trainQuery.trim();
-
-    if (query.length < 2) {
-      return;
-    }
-
-    const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
-      setIsSearching(true);
-      setSearchMessage(null);
-
-      const params = new URLSearchParams({ q: query });
-      if (sourceCode) params.set("sourceCode", sourceCode);
-      if (destinationCode) params.set("destinationCode", destinationCode);
-      if (travelDate) params.set("travelDate", travelDate);
-
-      try {
-        const response = await fetch(`/api/trains/search?${params.toString()}`, { signal: controller.signal });
-        const payload = await response.json();
-        setSearchResults(Array.isArray(payload.data) ? payload.data : []);
-
-        if (!response.ok) {
-          setSearchMessage(payload.error ?? "Live train search failed.");
-        } else if (!payload.data?.length) {
-          setSearchMessage("No matching saved trains found.");
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          setSearchResults([]);
-          setSearchMessage(error instanceof Error ? error.message : "Live train search failed.");
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsSearching(false);
-        }
-      }
-    }, 350);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [destinationCode, sourceCode, trainQuery, travelDate]);
 
   async function syncPnrForCreate() {
     if (!/^\d{10}$/.test(pnr)) {
@@ -707,17 +570,9 @@ function Planner({
     }
 
     const data = payload.data as Partial<Journey> & { trainNumber?: string; trainName?: string };
-    const matchedTrain = data.trainNumber
-      ? trains.find((train) => train.trainNumber === data.trainNumber)
-      : undefined;
-
-    if (matchedTrain) {
-      selectTrain(matchedTrain);
-    } else if (data.trainNumber) {
-      setTrainQuery(`${data.trainNumber} ${data.trainName ?? ""}`.trim());
+    if (data.trainNumber) {
       setTrainNumber(data.trainNumber);
       setTrainName(data.trainName ?? "");
-      setSelectedTrainId("");
     }
 
     if (data.travelDate) setTravelDate(data.travelDate);
@@ -733,8 +588,6 @@ function Planner({
     <section className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
       <Panel title="Create journey" action="60-day booking window">
         <form ref={formRef} action={onCreateJourney} className="grid gap-4">
-          <input type="hidden" name="trainId" value={selectedTrainId} />
-          <input type="hidden" name="trainQuery" value={trainQuery} />
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             PNR number
             <div className="flex gap-2">
@@ -761,34 +614,6 @@ function Planner({
               {pnrMessage}
             </div>
           )}
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Live train search
-            <input
-              value={trainQuery}
-              onChange={(event) => updateTrainQuery(event.target.value)}
-              placeholder="Type train number, train name, source, or destination"
-              className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
-            />
-            {(isSearching || searchMessage || searchResults.length > 0) && (
-              <div className="rounded-md border border-slate-200 bg-white p-2">
-                {isSearching && <p className="px-2 py-1 text-xs font-semibold text-slate-500">Searching...</p>}
-                {searchResults.map((result) => (
-                  <button
-                    key={`${result.id ?? result.trainNumber}-${result.sourceCode ?? ""}-${result.destinationCode ?? ""}`}
-                    type="button"
-                    onClick={() => selectSearchResult(result)}
-                    className="block w-full rounded px-2 py-2 text-left hover:bg-slate-50"
-                  >
-                    <span className="block text-sm font-semibold text-slate-950">{result.trainNumber} {result.trainName}</span>
-                    <span className="block text-xs font-medium text-slate-500">
-                      {[result.sourceCode, result.destinationCode].filter(Boolean).join(" to ") || "Route details unavailable"}
-                    </span>
-                  </button>
-                ))}
-                {searchMessage && <p className="px-2 py-1 text-xs font-semibold text-amber-800">{searchMessage}</p>}
-              </div>
-            )}
-          </label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Train number
@@ -828,7 +653,7 @@ function Planner({
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Preferred class
               <select name="preferredClass" value={preferredClass} onChange={(event) => setPreferredClass(event.target.value)} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                {Array.from(new Set([...(selectedTrain?.preferredClasses ?? []), "2A", "3A", "SL", "CC", "EC", "2S"])).map((coachClass) => (
+                {Array.from(new Set(["2A", "3A", "SL", "CC", "EC", "2S"])).map((coachClass) => (
                   <option key={coachClass} value={coachClass}>{coachClass}</option>
                 ))}
               </select>
@@ -911,7 +736,6 @@ function Tracker({
 
     const trainId = String(formData.get("trainId"));
     const train = trainById.get(trainId);
-    const farePaid = String(formData.get("farePaid") ?? "");
     const waitlistPosition = String(formData.get("waitlistPosition") ?? "");
 
     onUpdateJourney(editingJourney.id, {
@@ -929,7 +753,6 @@ function Tracker({
       coach: optionalString(formData.get("coach")),
       seat: optionalString(formData.get("seat")),
       bookingDate: optionalString(formData.get("bookingDate")),
-      farePaid: farePaid ? Number(farePaid) : undefined,
       waitlistPosition: waitlistPosition ? Number(waitlistPosition) : undefined,
     });
     setEditingJourney(null);
@@ -989,7 +812,7 @@ function Tracker({
                       <Meta label="Travel" value={formatDate(journey.travelDate)} />
                       <Meta label="Book" value={formatDate(journey.bookingOpenDate)} />
                       <Meta label="Class" value={journey.preferredClass} />
-                      <Meta label="Fare" value={journey.farePaid ? formatCurrency(journey.farePaid) : "Not booked"} />
+                      <Meta label="PNR" value={journey.pnr ?? "Not added"} />
                     </dl>
                     <div className="mt-3 flex gap-2">
                       <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Upload ticket attachment">
@@ -1111,10 +934,6 @@ function Tracker({
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Seat
                 <input name="seat" defaultValue={editingJourney.seat ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Fare paid
-                <input name="farePaid" type="number" min="0" defaultValue={editingJourney.farePaid ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Waitlist position
@@ -1333,6 +1152,45 @@ function SettingsPanel({
           ))}
         </div>
       </Panel>
+    </section>
+  );
+}
+
+function AccountPanel({
+  currentUser,
+}: {
+  currentUser: Props["currentUser"];
+}) {
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.reload();
+  }
+
+  return (
+    <section className="grid gap-5 lg:grid-cols-[0.75fr_1.25fr]">
+      <Panel title="Account" action={currentUser.role === "ADMIN" ? "Admin" : "User"}>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-sm font-medium text-slate-500">Signed in as</p>
+          <p className="mt-1 text-base font-semibold text-slate-950">{currentUser.email}</p>
+          {currentUser.name && <p className="mt-1 text-sm text-slate-600">{currentUser.name}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={logout}
+          className="mt-4 inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700"
+        >
+          <LogOut className="h-4 w-4" aria-hidden />
+          Log out
+        </button>
+      </Panel>
+
+      {currentUser.role !== "ADMIN" && (
+        <Panel title="Admin settings" action="Restricted">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-medium text-slate-600">
+            User management and signup controls are available to admin users only.
+          </div>
+        </Panel>
+      )}
     </section>
   );
 }
@@ -1556,7 +1414,6 @@ function AnalyticsPanel({
   journeys: Journey[];
   routeById: Map<string, Route>;
 }) {
-  const bookedJourneys = journeys.filter((journey) => journey.farePaid);
   const monthlyAnalytics = buildMonthlyAnalytics(journeys);
   const mostUsedRoutes = Array.from(
     journeys.reduce((map, journey) => {
@@ -1566,9 +1423,7 @@ function AnalyticsPanel({
     }, new Map<string, number>()),
   ).map(([route, count]) => ({ route, count }));
 
-  const averageFare = bookedJourneys.length > 0
-    ? bookedJourneys.reduce((sum, journey) => sum + (journey.farePaid ?? 0), 0) / bookedJourneys.length
-    : 0;
+  const activeTickets = journeys.filter((journey) => !["CANCELLED", "COMPLETED"].includes(journey.status)).length;
   const waitlistFrequency = journeys.length > 0
     ? Math.round((journeys.filter((journey) => ["WAITLISTED", "RAC"].includes(journey.status)).length / journeys.length) * 100)
     : 0;
@@ -1579,17 +1434,17 @@ function AnalyticsPanel({
   return (
     <section className="grid gap-5">
       <div className="grid gap-3 md:grid-cols-4">
-        <MetricCard icon={Train} label="Average fare" value={formatCurrency(averageFare)} tone="slate" />
+        <MetricCard icon={Train} label="Active tickets" value={activeTickets.toString()} tone="slate" />
         <MetricCard icon={AlertTriangle} label="Waitlist frequency" value={`${waitlistFrequency}%`} tone="amber" />
         <MetricCard icon={CheckCircle2} label="Booking success rate" value={`${successRate}%`} tone="green" />
         <MetricCard icon={MapPin} label="Routes used" value={mostUsedRoutes.length.toString()} tone="slate" />
       </div>
       {journeys.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm font-medium text-slate-600">
-          No analytics yet. Add journeys to build fare, route, waitlist, and booking success trends.
+          No analytics yet. Add tickets to build route, waitlist, and booking success trends.
         </div>
       )}
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5">
         <Panel title="Trips per month" action="Trend">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -1600,19 +1455,6 @@ function AnalyticsPanel({
                 <Tooltip />
                 <Bar dataKey="trips" fill="#2563eb" radius={[4, 4, 0, 0]} />
               </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
-        <Panel title="Travel spend trends" action="INR">
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlyAnalytics}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="spend" stroke="#15803d" fill="#bbf7d0" />
-              </AreaChart>
             </ResponsiveContainer>
           </div>
         </Panel>
@@ -1766,21 +1608,15 @@ function journeyRouteLabel(journey: Journey, route?: Route) {
   return routeLabel(route);
 }
 
-function trainSearchLabel(train: TrainType, route?: Route) {
-  const routeText = route ? `${route.originCode} to ${route.destinationCode}` : "route pending";
-  return `${train.trainNumber} ${train.trainName} - ${routeText}`;
-}
-
 function buildMonthlyAnalytics(journeys: Journey[]) {
   const monthMap = journeys.reduce((map, journey) => {
     const monthKey = journey.travelDate.slice(0, 7);
-    const existing = map.get(monthKey) ?? { month: monthKey, trips: 0, spend: 0, waitlisted: 0 };
+    const existing = map.get(monthKey) ?? { month: monthKey, trips: 0, waitlisted: 0 };
     existing.trips += 1;
-    existing.spend += journey.farePaid ?? 0;
     existing.waitlisted += ["WAITLISTED", "RAC"].includes(journey.status) ? 1 : 0;
     map.set(monthKey, existing);
     return map;
-  }, new Map<string, { month: string; trips: number; spend: number; waitlisted: number }>());
+  }, new Map<string, { month: string; trips: number; waitlisted: number }>());
 
   return Array.from(monthMap.values())
     .sort((a, b) => a.month.localeCompare(b.month))
@@ -1899,14 +1735,4 @@ function isSameMonth(dateOnly: string, today: string) {
 function optionalString(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
   return text ? text : undefined;
-}
-
-function parseTrainQuery(value: string) {
-  const trimmed = value.trim();
-  const match = trimmed.match(/^([A-Z0-9]{2,12})(?:\s+(.+))?$/i);
-
-  return {
-    trainNumber: match?.[1]?.toUpperCase(),
-    trainName: match?.[2]?.trim(),
-  };
 }

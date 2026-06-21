@@ -40,10 +40,6 @@ Validation:
 - `travelDate` must be `YYYY-MM-DD`
 - `bookingOpenDate` is server-calculated as `travelDate - 60 days`
 
-## `GET /trains/search?q=:query`
-
-Searches the authenticated user's saved trains first, then calls `TRAIN_SEARCH_PROVIDER_URL` when configured. The app does not scrape IRCTC.
-
 ## `PATCH /journeys/:id`
 
 Updates booking state and ticket details.
@@ -54,8 +50,7 @@ Updates booking state and ticket details.
   "pnr": "8214567390",
   "coach": "C3",
   "seat": "42",
-  "bookingDate": "2026-05-04",
-  "farePaid": 685
+  "bookingDate": "2026-05-04"
 }
 ```
 

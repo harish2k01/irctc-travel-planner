@@ -54,7 +54,6 @@ async function loadInitialData(userId: string): Promise<InitialData> {
       coach: journey.coach ?? undefined,
       seat: journey.seat ?? undefined,
       bookingDate: journey.bookingDate ? dateOnly(journey.bookingDate) : undefined,
-      farePaid: journey.farePaid ? Number(journey.farePaid) : undefined,
       waitlistPosition: journey.waitlistPosition ?? undefined,
     })),
     routes: dbRoutes.map((route) => ({

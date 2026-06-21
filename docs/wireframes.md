@@ -4,11 +4,11 @@
 
 ```text
 +--------------------------------------------------------------+
-| IRCTC Travel Planner              [Next 30d] [Pending] [Spend]|
+| IRCTC Travel Planner           [Next 30d] [Pending] [Confirmed]|
 +--------------------------------------------------------------+
 | [Dashboard] [Planner] [Tracker] [Calendar] [Holidays] [...]   |
 +--------------------------------------------------------------+
-| [Book Today] [Opens Tomorrow] [Waitlist Risk] [Trips] [Spend] |
+| [Book Today] [Opens Tomorrow] [Waitlist Risk] [Trips]        |
 +--------------------------------------------------------------+
 | Upcoming journeys                         | Booking windows   |
 | - Train, route, travel date, status       | - Train, open date |
@@ -58,7 +58,7 @@
 +--------------------------------------------------------------+
 | [Average Fare] [Waitlist Frequency] [Success Rate] [Routes]   |
 +--------------------------------------------------------------+
-| Trips per month chart          | Travel spend trend chart     |
+| Trips per month chart          | Ticket status trend chart     |
 +--------------------------------------------------------------+
 | Most used routes                                             |
 +--------------------------------------------------------------+
