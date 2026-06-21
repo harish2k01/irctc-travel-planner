@@ -12,6 +12,16 @@ export const journeyStatusSchema = z.enum([
   "COMPLETED",
 ]);
 
+const optionalPnrSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().regex(/^\d{10}$/).optional(),
+);
+
+const editablePnrSchema = z.preprocess(
+  (value) => (value === "" ? null : value),
+  z.string().regex(/^\d{10}$/).nullable().optional(),
+);
+
 export const createJourneySchema = z.object({
   routeId: z.string().min(1).optional(),
   trainId: z.string().min(1).optional(),
@@ -25,7 +35,7 @@ export const createJourneySchema = z.object({
   destinationName: z.string().max(120).optional(),
   direction: z.enum(["HOME_TO_OFFICE", "OFFICE_TO_HOME"]).optional(),
   recurrence: z.enum(["ONE_TIME", "WEEKLY", "CUSTOM"]).optional(),
-  pnr: z.string().regex(/^\d{10}$/),
+  pnr: optionalPnrSchema,
   notes: z.string().max(500).optional(),
   remindersEnabled: z.boolean().optional(),
   reminderEmailEnabled: z.boolean().optional(),
@@ -51,7 +61,7 @@ export const updateJourneyStatusSchema = z.object({
   direction: z.enum(["HOME_TO_OFFICE", "OFFICE_TO_HOME"]).optional(),
   recurrence: z.enum(["ONE_TIME", "WEEKLY", "CUSTOM"]).optional(),
   notes: z.string().max(500).optional(),
-  pnr: z.string().regex(/^\d{10}$/).optional(),
+  pnr: editablePnrSchema,
   coach: z.string().max(8).optional(),
   seat: z.string().max(12).optional(),
   bookingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

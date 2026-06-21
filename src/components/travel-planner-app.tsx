@@ -202,9 +202,9 @@ export function TravelPlannerApp({
 
   async function createJourney(formData: FormData) {
     const travelDate = String(formData.get("travelDate"));
-    const pnr = String(formData.get("pnr") ?? "");
-    const trainNumber = optionalString(formData.get("trainNumber")) ?? `PNR-${pnr.slice(-4)}`;
-    const trainName = optionalString(formData.get("trainName")) ?? "Pending train details";
+    const pnr = optionalString(formData.get("pnr"));
+    const trainNumber = optionalString(formData.get("trainNumber")) ?? `TBD-${Date.now().toString().slice(-6)}`;
+    const trainName = optionalString(formData.get("trainName")) ?? "Train to be decided";
     const preferredClass = optionalString(formData.get("preferredClass")) ?? "NA";
     const reminderEmailEnabled = settings.reminderEmailEnabled && formData.get("reminderEmailEnabled") === "on";
     const reminderDiscordEnabled = settings.reminderDiscordEnabled && formData.get("reminderDiscordEnabled") === "on";
@@ -265,7 +265,7 @@ export function TravelPlannerApp({
           sourceName: newJourney.sourceName,
           destinationCode: newJourney.destinationCode,
           destinationName: newJourney.destinationName,
-          pnr: newJourney.pnr,
+          ...(newJourney.pnr ? { pnr: newJourney.pnr } : {}),
           remindersEnabled: newJourney.remindersEnabled,
           reminderEmailEnabled: newJourney.reminderEmailEnabled,
           reminderDiscordEnabled: newJourney.reminderDiscordEnabled,
@@ -720,21 +720,24 @@ function Planner({
 
   return (
     <section className="grid gap-5">
-      <Panel title="Track Ticket" action="PNR-Based">
+      <Panel title="Add Ticket" action="PNR optional">
         <form ref={formRef} action={onCreateJourney} className="grid gap-4">
           <input type="hidden" name="trainNumber" value={trainNumber} />
           <input type="hidden" name="trainName" value={trainName} />
           <input type="hidden" name="preferredClass" value={preferredClass} />
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             PNR number
+            <span className="text-xs font-medium text-slate-500">Optional. Add it now if already booked, or tag it later from Tracker after booking.</span>
             <div className="flex gap-2">
               <input
                 name="pnr"
                 inputMode="numeric"
                 value={pnr}
                 onChange={(event) => setPnr(event.target.value)}
-                placeholder="10 digit PNR"
-                required
+                placeholder="10 digit PNR after booking"
+                pattern="[0-9]{10}"
+                maxLength={10}
+                title="PNR must be a 10 digit number."
                 className="h-11 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
               />
               <button
@@ -943,7 +946,7 @@ function Tracker({
       destinationName: optionalString(formData.get("destinationName")),
       status: String(formData.get("status")) as JourneyStatus,
       notes: String(formData.get("notes") ?? ""),
-      pnr: optionalString(formData.get("pnr")),
+      pnr: editableOptionalString(formData.get("pnr")),
       coach: optionalString(formData.get("coach")),
       seat: optionalString(formData.get("seat")),
       trainNumber: optionalString(formData.get("trainNumber")),
@@ -1022,7 +1025,7 @@ function Tracker({
                       settings={settings}
                       onUpdate={(patch) => onUpdateJourney(journey.id, patch)}
                     />
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Upload ticket attachment">
                         <Upload className="h-4 w-4" aria-hidden />
                       </button>
@@ -1035,18 +1038,20 @@ function Tracker({
                           setEditingJourney(journey);
                           setPnrSyncMessage(null);
                         }}
-                        className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700"
-                        aria-label={`Edit ${trainById.get(journey.trainId)?.trainNumber ?? "journey"}`}
+                        className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                        aria-label={`Edit ${trainById.get(journey.trainId)?.trainNumber ?? "ticket"}`}
                       >
                         <Pencil className="h-4 w-4" aria-hidden />
+                        Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => onDeleteJourney(journey.id)}
-                        className="grid h-9 w-9 place-items-center rounded-md border border-red-200 bg-red-50 text-red-700"
-                        aria-label={`Delete ${trainById.get(journey.trainId)?.trainNumber ?? "journey"}`}
+                        className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700"
+                        aria-label={`Delete ${trainById.get(journey.trainId)?.trainNumber ?? "ticket"}`}
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />
+                        Delete
                       </button>
                     </div>
                   </article>
@@ -1061,7 +1066,7 @@ function Tracker({
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
           <form key={JSON.stringify(editingJourney)} action={submitEdit} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold text-slate-950">Edit journey</h2>
+              <h2 className="text-base font-semibold text-slate-950">Edit Ticket</h2>
               <button
                 type="button"
                 onClick={() => {
@@ -1069,7 +1074,7 @@ function Tracker({
                   setPnrSyncMessage(null);
                 }}
                 className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700"
-                aria-label="Close edit journey"
+                aria-label="Close edit ticket"
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>
@@ -1117,9 +1122,10 @@ function Tracker({
                 <input name="destinationName" defaultValue={editingJourney.destinationName ?? routeById.get(editingJourney.routeId)?.destinationName ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                PNR
+                PNR tag
+                <span className="text-xs font-medium text-slate-500">Add after booking to link this planned ticket with the booked PNR. Clear it and save to remove the tag.</span>
                 <div className="flex gap-2">
-                  <input name="pnr" inputMode="numeric" defaultValue={editingJourney.pnr ?? ""} className="h-11 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                  <input name="pnr" inputMode="numeric" defaultValue={editingJourney.pnr ?? ""} placeholder="10 digit PNR" pattern="[0-9]{10}" maxLength={10} title="PNR must be a 10 digit number." className="h-11 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
                   <button
                     type="button"
                     onClick={(event) => syncPnr(event.currentTarget.form as HTMLFormElement)}
@@ -2310,4 +2316,9 @@ function minDate(first: string, second: string) {
 function optionalString(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
   return text ? text : undefined;
+}
+
+function editableOptionalString(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  return text ? text : null;
 }

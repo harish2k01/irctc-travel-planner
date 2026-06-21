@@ -44,7 +44,7 @@ export type Journey = {
   recurrence?: RecurrenceType;
   status: JourneyStatus;
   notes?: string;
-  pnr?: string;
+  pnr?: string | null;
   coach?: string;
   seat?: string;
   bookingDate?: string;

@@ -77,8 +77,8 @@ export async function POST(request: Request) {
     } else {
       const sourceCode = normalized.sourceCode?.trim().toUpperCase();
       const destinationCode = normalized.destinationCode?.trim().toUpperCase();
-      const trainNumber = normalized.trainNumber?.trim() || `PNR-${normalized.pnr.slice(-4)}`;
-      const trainName = normalized.trainName?.trim() || "Pending train details";
+      const trainNumber = normalized.trainNumber?.trim() || `TBD-${Date.now().toString().slice(-6)}`;
+      const trainName = normalized.trainName?.trim() || "Train to be decided";
 
       if (!sourceCode || !destinationCode) {
         return null;
