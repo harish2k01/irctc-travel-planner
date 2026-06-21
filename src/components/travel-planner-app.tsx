@@ -41,7 +41,7 @@ import {
   YAxis,
 } from "recharts";
 import { buildJourneyReminders, calculateBookingOpenDate, daysBetween, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
-import type { Holiday, Journey, JourneyStatus, Reminder, Route, Train as TrainType } from "@/lib/types";
+import type { Holiday, Journey, Reminder, Route, Train as TrainType } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 
 type Props = {
@@ -69,39 +69,6 @@ const tabs = [
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "settings", label: "Admin Settings", icon: Settings },
 ] as const;
-
-const statusColumns: JourneyStatus[] = [
-  "PLANNED",
-  "BOOKING_WINDOW_OPEN",
-  "BOOKED",
-  "WAITLISTED",
-  "RAC",
-  "CONFIRMED",
-  "CANCELLED",
-  "COMPLETED",
-];
-
-const statusLabels: Record<JourneyStatus, string> = {
-  PLANNED: "Planned",
-  BOOKING_WINDOW_OPEN: "Window Open",
-  BOOKED: "Booked",
-  WAITLISTED: "Waitlisted",
-  RAC: "RAC",
-  CONFIRMED: "Confirmed",
-  CANCELLED: "Cancelled",
-  COMPLETED: "Completed",
-};
-
-const statusTone: Record<JourneyStatus, string> = {
-  PLANNED: "border-slate-200 bg-slate-50 text-slate-700",
-  BOOKING_WINDOW_OPEN: "border-red-200 bg-red-50 text-red-700",
-  BOOKED: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  WAITLISTED: "border-amber-200 bg-amber-50 text-amber-800",
-  RAC: "border-sky-200 bg-sky-50 text-sky-700",
-  CONFIRMED: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  CANCELLED: "border-zinc-200 bg-zinc-50 text-zinc-500",
-  COMPLETED: "border-zinc-200 bg-zinc-50 text-zinc-500",
-};
 
 type TabId = (typeof tabs)[number]["id"];
 type JourneyPatch = Partial<Omit<Journey, "id" | "bookingOpenDate">> & {
@@ -187,10 +154,8 @@ export function TravelPlannerApp({
     () => journeys.filter((journey) => isWithinNextDays(journey.bookingOpenDate, today, 7)),
     [journeys, today],
   );
-  const pendingBookings = journeys.filter((journey) =>
-    ["PLANNED", "BOOKING_WINDOW_OPEN", "WAITLISTED", "RAC"].includes(journey.status),
-  );
-  const confirmedBookings = journeys.filter((journey) => ["BOOKED", "CONFIRMED"].includes(journey.status));
+  const pendingBookings = journeys.filter((journey) => !journey.pnr && !["CANCELLED", "COMPLETED"].includes(journey.status));
+  const confirmedBookings = journeys.filter((journey) => Boolean(journey.pnr));
   const reminders = journeys.flatMap((journey) => buildConfiguredReminders(journey, settings));
   const inAppReminders = journeys
     .flatMap((journey) => buildConfiguredReminders(journey, settings, "IN_APP"))
@@ -203,9 +168,6 @@ export function TravelPlannerApp({
   async function createJourney(formData: FormData) {
     const travelDate = String(formData.get("travelDate"));
     const pnr = optionalString(formData.get("pnr"));
-    const trainNumber = optionalString(formData.get("trainNumber")) ?? `TBD-${Date.now().toString().slice(-6)}`;
-    const trainName = optionalString(formData.get("trainName")) ?? "Train to be decided";
-    const preferredClass = optionalString(formData.get("preferredClass")) ?? "NA";
     const reminderEmailEnabled = settings.reminderEmailEnabled && formData.get("reminderEmailEnabled") === "on";
     const reminderDiscordEnabled = settings.reminderDiscordEnabled && formData.get("reminderDiscordEnabled") === "on";
     const reminderInAppEnabled = settings.reminderInAppEnabled && formData.get("reminderInAppEnabled") === "on";
@@ -213,6 +175,9 @@ export function TravelPlannerApp({
     const sourceName = optionalString(formData.get("sourceName"));
     const destinationCode = optionalString(formData.get("destinationCode"))?.toUpperCase();
     const destinationName = optionalString(formData.get("destinationName"));
+    const trainNumber = optionalString(formData.get("trainNumber")) ?? `${sourceCode ?? "SRC"}-${destinationCode ?? "DST"}`;
+    const trainName = optionalString(formData.get("trainName")) ?? "Manual ticket";
+    const preferredClass = optionalString(formData.get("preferredClass")) ?? "NA";
     const routeId = `local-route-${Date.now()}`;
     const nextTrainId = `local-train-${Date.now()}`;
     const nextRoute: Route = {
@@ -394,13 +359,13 @@ export function TravelPlannerApp({
   const calendarEvents = [
     ...journeys.map((journey) => ({
       id: `${journey.id}-travel`,
-      title: `${trainById.get(journey.trainId)?.trainNumber ?? journey.trainId} Travel`,
+      title: `${journeyRouteLabel(journey, routeById.get(journey.routeId))} Travel`,
       date: journey.travelDate,
       color: ["CONFIRMED", "BOOKED"].includes(journey.status) ? "#15803d" : "#334155",
     })),
     ...journeys.map((journey) => ({
       id: `${journey.id}-booking`,
-      title: `Booking Opens ${trainById.get(journey.trainId)?.trainNumber ?? journey.trainId}`,
+      title: `Booking Opens ${journeyRouteLabel(journey, routeById.get(journey.routeId))}`,
       date: journey.bookingOpenDate,
       color: getBookingUrgency(journey, today).tone === "red" ? "#dc2626" : "#d97706",
     })),
@@ -513,7 +478,7 @@ export function TravelPlannerApp({
                   <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[360px]">
                     <MiniMetric label="Next 30 Days" value={upcomingJourneys.length.toString()} />
                     <MiniMetric label="Pending" value={pendingBookings.length.toString()} />
-                    <MiniMetric label="Confirmed" value={confirmedBookings.length.toString()} />
+                    <MiniMetric label="Booked" value={confirmedBookings.length.toString()} />
                   </div>
                 </div>
               </div>
@@ -530,7 +495,6 @@ export function TravelPlannerApp({
             pendingBookings={pendingBookings}
             confirmedBookings={confirmedBookings}
             routeById={routeById}
-            trainById={trainById}
             today={today}
           />
         )}
@@ -543,6 +507,7 @@ export function TravelPlannerApp({
             trainById={trainById}
             routeById={routeById}
             settings={settings}
+            today={today}
             onUpdateJourney={updateJourney}
             onDeleteJourney={deleteJourney}
           />
@@ -588,7 +553,6 @@ function Dashboard({
   pendingBookings,
   confirmedBookings,
   routeById,
-  trainById,
   today,
 }: {
   journeys: Journey[];
@@ -598,7 +562,6 @@ function Dashboard({
   pendingBookings: Journey[];
   confirmedBookings: Journey[];
   routeById: Map<string, Route>;
-  trainById: Map<string, TrainType>;
   today: string;
 }) {
   const bookToday = journeys.filter((journey) => getBookingUrgency(journey, today).daysUntilOpen <= 0 && journey.status === "PLANNED");
@@ -621,7 +584,6 @@ function Dashboard({
                 key={journey.id}
                 journey={journey}
                 route={routeById.get(journey.routeId)}
-                train={trainById.get(journey.trainId)}
                 today={today}
               />
             ))}
@@ -634,7 +596,7 @@ function Dashboard({
               <div key={journey.id} className="rounded-lg border border-slate-200 bg-white p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-slate-950">{trainById.get(journey.trainId)?.trainNumber} {trainById.get(journey.trainId)?.trainName}</p>
+                    <p className="text-sm font-semibold text-slate-950">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
                     <p className="mt-1 text-sm text-slate-600">{formatDate(journey.bookingOpenDate)} booking open</p>
                   </div>
                   <StatusPill journey={journey} today={today} />
@@ -647,10 +609,10 @@ function Dashboard({
 
       <section className="grid gap-5 lg:grid-cols-3">
         <Panel title="Tickets to Book" action={pendingBookings.length.toString()}>
-          <CompactJourneyList journeys={pendingBookings} trainById={trainById} />
+          <CompactJourneyList journeys={pendingBookings} routeById={routeById} />
         </Panel>
         <Panel title="Booked Tickets" action={confirmedBookings.length.toString()}>
-          <CompactJourneyList journeys={confirmedBookings} trainById={trainById} />
+          <CompactJourneyList journeys={confirmedBookings} routeById={routeById} />
         </Panel>
         <Panel title="Upcoming Holidays" action="Long Weekend Watch">
           <div className="space-y-3">
@@ -880,9 +842,7 @@ function ReminderChannelButtons({
   }
 
   return (
-    <div className="mt-3 grid gap-2 rounded-md border border-slate-200 bg-white p-2">
-      <p className="text-xs font-semibold text-slate-600">Reminder channels</p>
-      <div className="flex flex-wrap gap-2">
+    <div className="mt-3 flex flex-wrap gap-2">
         {channels.map((channel) => {
           const Icon = channel.icon;
           const enabled = journey[channel.key] !== false;
@@ -903,7 +863,6 @@ function ReminderChannelButtons({
             </button>
           );
         })}
-      </div>
     </div>
   );
 }
@@ -913,6 +872,7 @@ function Tracker({
   trainById,
   routeById,
   settings,
+  today,
   onUpdateJourney,
   onDeleteJourney,
 }: {
@@ -920,6 +880,7 @@ function Tracker({
   trainById: Map<string, TrainType>;
   routeById: Map<string, Route>;
   settings: AppSettingsState;
+  today: string;
   onUpdateJourney: (id: string, patch: JourneyPatch) => void;
   onDeleteJourney: (id: string) => void;
 }) {
@@ -933,26 +894,24 @@ function Tracker({
 
     const trainId = String(formData.get("trainId"));
     const train = trainById.get(trainId);
-    const waitlistPosition = String(formData.get("waitlistPosition") ?? "");
+    const pnr = editableOptionalString(formData.get("pnr"));
 
     onUpdateJourney(editingJourney.id, {
       routeId: train?.routeId ?? editingJourney.routeId,
       trainId,
       travelDate: String(formData.get("travelDate")),
-      preferredClass: optionalString(formData.get("preferredClass")),
       sourceCode: optionalString(formData.get("sourceCode")),
       sourceName: optionalString(formData.get("sourceName")),
       destinationCode: optionalString(formData.get("destinationCode")),
       destinationName: optionalString(formData.get("destinationName")),
-      status: String(formData.get("status")) as JourneyStatus,
+      status: pnr ? "BOOKED" : "PLANNED",
       notes: String(formData.get("notes") ?? ""),
-      pnr: editableOptionalString(formData.get("pnr")),
+      pnr,
       coach: optionalString(formData.get("coach")),
       seat: optionalString(formData.get("seat")),
       trainNumber: optionalString(formData.get("trainNumber")),
       trainName: optionalString(formData.get("trainName")),
       bookingDate: optionalString(formData.get("bookingDate")),
-      waitlistPosition: waitlistPosition ? Number(waitlistPosition) : undefined,
       reminderEmailEnabled: settings.reminderEmailEnabled && formData.get("reminderEmailEnabled") === "on",
       reminderDiscordEnabled: settings.reminderDiscordEnabled && formData.get("reminderDiscordEnabled") === "on",
       reminderInAppEnabled: settings.reminderInAppEnabled && formData.get("reminderInAppEnabled") === "on",
@@ -988,78 +947,43 @@ function Tracker({
     onUpdateJourney(editingJourney.id, {
       pnr,
       ...payload.data,
+      status: "BOOKED",
     });
-    setEditingJourney((current) => (current ? { ...current, pnr, ...payload.data } : current));
+    setEditingJourney((current) => (current ? { ...current, pnr, ...payload.data, status: "BOOKED" } : current));
     setPnrSyncMessage("PNR data synced.");
   }
 
   return (
     <>
-      <section className="grid auto-cols-[minmax(260px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-3">
-        {statusColumns.map((status) => {
-          const items = journeys.filter((journey) => journey.status === status);
-          return (
-            <div key={status} className="min-h-[440px] rounded-lg border border-slate-200 bg-white p-3">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-slate-950">{statusLabels[status]}</h2>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">{items.length}</span>
-              </div>
-              <div className="space-y-3">
-                {items.map((journey) => (
-                  <article key={journey.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-950">{trainById.get(journey.trainId)?.trainNumber} {trainById.get(journey.trainId)?.trainName}</h3>
-                        <p className="mt-1 text-xs text-slate-600">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
-                      </div>
-                      <StatusBadge status={journey.status} />
-                    </div>
-                    <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                      <Meta label="Travel" value={formatDate(journey.travelDate)} />
-                      <Meta label="Book" value={formatDate(journey.bookingOpenDate)} />
-                      <Meta label="Class" value={journey.preferredClass === "NA" ? "Not tagged" : journey.preferredClass} />
-                      <Meta label="PNR" value={journey.pnr ?? "Not added"} />
-                    </dl>
-                    <ReminderChannelButtons
-                      journey={journey}
-                      settings={settings}
-                      onUpdate={(patch) => onUpdateJourney(journey.id, patch)}
-                    />
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Upload ticket attachment">
-                        <Upload className="h-4 w-4" aria-hidden />
-                      </button>
-                      <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Open ticket notes">
-                        <FileText className="h-4 w-4" aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingJourney(journey);
-                          setPnrSyncMessage(null);
-                        }}
-                        className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
-                        aria-label={`Edit ${trainById.get(journey.trainId)?.trainNumber ?? "ticket"}`}
-                      >
-                        <Pencil className="h-4 w-4" aria-hidden />
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDeleteJourney(journey.id)}
-                        className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700"
-                        aria-label={`Delete ${trainById.get(journey.trainId)?.trainNumber ?? "ticket"}`}
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden />
-                        Delete
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+      <section className="grid gap-5 lg:grid-cols-2">
+        <TicketGroup
+          title="Tickets to Book"
+          emptyText="No tickets waiting to be booked."
+          journeys={journeys.filter((journey) => !journey.pnr && !["CANCELLED", "COMPLETED"].includes(journey.status))}
+          routeById={routeById}
+          settings={settings}
+          today={today}
+          onEdit={(journey) => {
+            setEditingJourney(journey);
+            setPnrSyncMessage(null);
+          }}
+          onDelete={onDeleteJourney}
+          onUpdateJourney={onUpdateJourney}
+        />
+        <TicketGroup
+          title="Booked Tickets"
+          emptyText="No booked PNRs tagged yet."
+          journeys={journeys.filter((journey) => Boolean(journey.pnr))}
+          routeById={routeById}
+          settings={settings}
+          today={today}
+          onEdit={(journey) => {
+            setEditingJourney(journey);
+            setPnrSyncMessage(null);
+          }}
+          onDelete={onDeleteJourney}
+          onUpdateJourney={onUpdateJourney}
+        />
       </section>
 
       {editingJourney && (
@@ -1080,30 +1004,10 @@ function Tracker({
               </button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Tagged train number
-                <input name="trainNumber" defaultValue={trainById.get(editingJourney.trainId)?.trainNumber ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Tagged train name
-                <input name="trainName" defaultValue={trainById.get(editingJourney.trainId)?.trainName ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-                <input type="hidden" name="trainId" value={editingJourney.trainId} />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Status
-                <select name="status" defaultValue={editingJourney.status} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                  {statusColumns.map((status) => (
-                    <option key={status} value={status}>{statusLabels[status]}</option>
-                  ))}
-                </select>
-              </label>
+              <input type="hidden" name="trainId" value={editingJourney.trainId} />
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Travel date
                 <input name="travelDate" type="date" defaultValue={editingJourney.travelDate} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Booked class
-                <input name="preferredClass" defaultValue={editingJourney.preferredClass === "NA" ? "" : editingJourney.preferredClass} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Source station code
@@ -1136,22 +1040,30 @@ function Tracker({
                   </button>
                 </div>
               </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Booking date
-                <input name="bookingDate" type="date" defaultValue={editingJourney.bookingDate ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Coach
-                <input name="coach" defaultValue={editingJourney.coach ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Seat
-                <input name="seat" defaultValue={editingJourney.seat ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Waitlist position
-                <input name="waitlistPosition" type="number" min="1" defaultValue={editingJourney.waitlistPosition ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-              </label>
+              {editingJourney.pnr && (
+                <>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">
+                    Train number
+                    <input name="trainNumber" defaultValue={isPlaceholderTrain(trainById.get(editingJourney.trainId)) ? "" : trainById.get(editingJourney.trainId)?.trainNumber ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">
+                    Train name
+                    <input name="trainName" defaultValue={isPlaceholderTrain(trainById.get(editingJourney.trainId)) ? "" : trainById.get(editingJourney.trainId)?.trainName ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">
+                    Booking date
+                    <input name="bookingDate" type="date" defaultValue={editingJourney.bookingDate ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">
+                    Coach
+                    <input name="coach" defaultValue={editingJourney.coach ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium text-slate-700">
+                    Seat
+                    <input name="seat" defaultValue={editingJourney.seat ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                  </label>
+                </>
+              )}
               <ReminderChannelFields settings={settings} journey={editingJourney} />
             </div>
             <label className="mt-4 grid gap-2 text-sm font-medium text-slate-700">
@@ -1180,6 +1092,90 @@ function Tracker({
         </div>
       )}
     </>
+  );
+}
+
+function TicketGroup({
+  title,
+  emptyText,
+  journeys,
+  routeById,
+  settings,
+  today,
+  onEdit,
+  onDelete,
+  onUpdateJourney,
+}: {
+  title: string;
+  emptyText: string;
+  journeys: Journey[];
+  routeById: Map<string, Route>;
+  settings: AppSettingsState;
+  today: string;
+  onEdit: (journey: Journey) => void;
+  onDelete: (id: string) => void;
+  onUpdateJourney: (id: string, patch: JourneyPatch) => void;
+}) {
+  return (
+    <Panel title={title} action={`${journeys.length} Total`}>
+      <div className="grid gap-3">
+        {journeys.length === 0 && (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
+            {emptyText}
+          </div>
+        )}
+        {journeys.map((journey) => (
+          <article key={journey.id} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold leading-6 text-slate-950">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</h3>
+                <p className="mt-1 text-sm text-slate-600">Travel on {formatDate(journey.travelDate)}</p>
+              </div>
+              <StatusPill journey={journey} today={today} />
+            </div>
+
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+              <Meta label="Booking Opens" value={formatDate(journey.bookingOpenDate)} />
+              <Meta label="PNR" value={journey.pnr ?? "Not added"} />
+              {journey.pnr && <Meta label="Seat" value={[journey.coach, journey.seat].filter(Boolean).join(" ") || "Not synced"} />}
+            </dl>
+
+            <ReminderChannelButtons
+              journey={journey}
+              settings={settings}
+              onUpdate={(patch) => onUpdateJourney(journey.id, patch)}
+            />
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Upload ticket attachment">
+                <Upload className="h-4 w-4" aria-hidden />
+              </button>
+              <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Open ticket notes">
+                <FileText className="h-4 w-4" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={() => onEdit(journey)}
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"
+                aria-label="Edit ticket"
+              >
+                <Pencil className="h-4 w-4" aria-hidden />
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete(journey.id)}
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700"
+                aria-label="Delete ticket"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden />
+                Delete
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
@@ -1727,8 +1723,8 @@ function AnalyticsPanel({
     }, new Map<string, number>()),
   ).map(([route, count]) => ({ route, count }));
 
-  const ticketsToBook = journeys.filter((journey) => ["PLANNED", "BOOKING_WINDOW_OPEN"].includes(journey.status)).length;
-  const bookedTickets = journeys.filter((journey) => ["BOOKED", "CONFIRMED"].includes(journey.status)).length;
+  const ticketsToBook = journeys.filter((journey) => !journey.pnr).length;
+  const bookedTickets = journeys.filter((journey) => Boolean(journey.pnr)).length;
   const upcomingTickets = journeys.filter((journey) => !["CANCELLED", "COMPLETED"].includes(journey.status)).length;
 
   return (
@@ -1871,12 +1867,10 @@ function NotificationMenu({
 function JourneyRow({
   journey,
   route,
-  train,
   today,
 }: {
   journey: Journey;
   route?: Route;
-  train?: TrainType;
   today: string;
 }) {
   return (
@@ -1886,28 +1880,26 @@ function JourneyRow({
           <Train className="h-5 w-5" aria-hidden />
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-slate-950">{train?.trainNumber} {train?.trainName}</h3>
-          <p className="mt-1 text-sm text-slate-600">{journeyRouteLabel(journey, route)} - {formatDate(journey.travelDate)}</p>
+          <h3 className="text-sm font-semibold text-slate-950">{journeyRouteLabel(journey, route)}</h3>
+          <p className="mt-1 text-sm text-slate-600">Travel on {formatDate(journey.travelDate)}</p>
         </div>
       </div>
       <div className="flex items-center gap-2">
         <StatusPill journey={journey} today={today} />
-        <StatusBadge status={journey.status} />
       </div>
     </article>
   );
 }
 
-function CompactJourneyList({ journeys, trainById }: { journeys: Journey[]; trainById: Map<string, TrainType> }) {
+function CompactJourneyList({ journeys, routeById }: { journeys: Journey[]; routeById: Map<string, Route> }) {
   return (
     <div className="space-y-3">
       {journeys.slice(0, 4).map((journey) => (
         <div key={journey.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
           <div>
-            <p className="text-sm font-semibold text-slate-950">{trainById.get(journey.trainId)?.trainNumber} {trainById.get(journey.trainId)?.trainName}</p>
+            <p className="text-sm font-semibold text-slate-950">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
             <p className="text-sm text-slate-600">{formatDate(journey.travelDate)}</p>
           </div>
-          <StatusBadge status={journey.status} />
         </div>
       ))}
     </div>
@@ -1924,14 +1916,6 @@ function StatusPill({ journey, today }: { journey: Journey; today: string }) {
   }[urgency.tone];
 
   return <span className={cn("rounded-full px-3 py-1 text-xs font-semibold", tone)}>{urgency.label}</span>;
-}
-
-function StatusBadge({ status }: { status: JourneyStatus }) {
-  return (
-    <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", statusTone[status])}>
-      {statusLabels[status]}
-    </span>
-  );
 }
 
 function Meta({ label, value }: { label: string; value: string }) {
@@ -1960,6 +1944,10 @@ function journeyRouteLabel(journey: Journey, route?: Route) {
   }
 
   return routeLabel(route);
+}
+
+function isPlaceholderTrain(train?: TrainType) {
+  return !train || train.trainNumber.startsWith("TBD-") || train.trainName === "Train to be decided" || train.trainName === "Manual ticket";
 }
 
 function buildMonthlyAnalytics(journeys: Journey[]) {

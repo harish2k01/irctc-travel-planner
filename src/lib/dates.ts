@@ -33,7 +33,8 @@ export function daysBetween(fromDate: string, toDate: string): number {
 
 export function buildJourneyReminders(journey: Journey): Reminder[] {
   const reminderDates = calculateReminderDates(journey.bookingOpenDate);
-  const trainLabel = journey.trainId.toUpperCase();
+  const routeLabel = [journey.sourceCode, journey.destinationCode].filter(Boolean).join(" to ");
+  const ticketLabel = routeLabel || "this ticket";
 
   return [
     {
@@ -41,21 +42,21 @@ export function buildJourneyReminders(journey: Journey): Reminder[] {
       journeyId: journey.id,
       type: "SEVEN_DAYS_BEFORE",
       dueDate: reminderDates.sevenDaysBefore,
-      message: `Booking opens in 7 days for ${trainLabel}.`,
+      message: `Booking opens in 7 days for ${ticketLabel}.`,
     },
     {
       id: `${journey.id}-r1`,
       journeyId: journey.id,
       type: "ONE_DAY_BEFORE",
       dueDate: reminderDates.oneDayBefore,
-      message: `Booking opens tomorrow for ${trainLabel}.`,
+      message: `Booking opens tomorrow for ${ticketLabel}.`,
     },
     {
       id: `${journey.id}-r0`,
       journeyId: journey.id,
       type: "BOOKING_OPEN",
       dueDate: reminderDates.bookingOpen,
-      message: `Booking opens today for ${trainLabel}.`,
+      message: `Booking opens today for ${ticketLabel}.`,
     },
   ];
 }
@@ -63,7 +64,7 @@ export function buildJourneyReminders(journey: Journey): Reminder[] {
 export function getBookingUrgency(journey: Journey, today = toDateOnly(new Date())) {
   const daysUntilOpen = daysBetween(today, journey.bookingOpenDate);
 
-  if (journey.status === "CONFIRMED" || journey.status === "BOOKED") {
+  if (journey.pnr || journey.status === "CONFIRMED" || journey.status === "BOOKED") {
     return { label: "Booked", tone: "green", daysUntilOpen };
   }
 
