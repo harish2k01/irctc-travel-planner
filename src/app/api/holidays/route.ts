@@ -46,7 +46,6 @@ export async function POST(request: Request) {
       name: parsed.data.name,
       date: toDate(parsed.data.date),
       type: parsed.data.type,
-      region: parsed.data.region,
     },
   });
 

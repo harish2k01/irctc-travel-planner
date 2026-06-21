@@ -28,7 +28,7 @@ The app starts with a first-admin signup screen when PostgreSQL is configured an
 
 Admins can disable public signups from Settings, create users, edit user access, and delete users. When SMTP is configured in Admin Settings, newly created users receive a temporary password by email and are forced to reset it on first login.
 
-Reminder channels, reminder timing, SMTP URL, email sender, and Discord webhook URL are controlled from Admin Settings. Email, Discord, and in-app reminders can be enabled globally, while each tracked ticket has its own per-channel reminder toggles.
+Reminder channels, reminder timing, SMTP URL, email sender, and Discord webhook URL are controlled from Admin Settings. Email, Discord, and In-App reminders can be enabled globally, while each tracked ticket has its own per-channel reminder toggles.
 
 ## Run With PostgreSQL
 
@@ -160,7 +160,7 @@ k8s                      Kubernetes manifests
 - Reminders are generated for:
   - 7 days before booking opens
   - 1 day before booking opens
-  - booking-open day
+  - booking open day
 - Journey states:
   - Planned
   - Booking Window Open
@@ -182,7 +182,7 @@ k8s                      Kubernetes manifests
 ## Next Iterations
 
 - Add optional Google Sign-In.
-- Add notification workers for email, Discord webhook, and in-app delivery.
+- Add notification workers for email, Discord webhook, and In-App delivery.
 - Add attachment upload to object storage.
 - Add CSV export and holiday CSV/ICS import processors.
 - Add optional IRCTC deep links without automation.

@@ -134,7 +134,7 @@ type ManagedUser = {
 const reminderChannelOptions = [
   { key: "reminderEmailEnabled", label: "Email", icon: Mail },
   { key: "reminderDiscordEnabled", label: "Discord", icon: MessageCircle },
-  { key: "reminderInAppEnabled", label: "In-app", icon: Bell },
+  { key: "reminderInAppEnabled", label: "In-App", icon: Bell },
 ] as const;
 
 type ReminderChannelKey = (typeof reminderChannelOptions)[number]["key"];
@@ -497,7 +497,7 @@ export function TravelPlannerApp({
                     onClose={() => setNotificationsOpen(false)}
                   />
                   <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[360px]">
-                    <MiniMetric label="Next 30d" value={upcomingJourneys.length.toString()} />
+                    <MiniMetric label="Next 30 Days" value={upcomingJourneys.length.toString()} />
                     <MiniMetric label="Pending" value={pendingBookings.length.toString()} />
                     <MiniMetric label="Confirmed" value={confirmedBookings.length.toString()} />
                   </div>
@@ -588,11 +588,11 @@ function Dashboard({
       <section className="grid gap-3 md:grid-cols-3" aria-label="Dashboard summary">
         <MetricCard icon={AlertTriangle} label="Book Today" value={bookToday.length.toString()} tone="red" />
         <MetricCard icon={Clock} label="Booking Opens Tomorrow" value={opensTomorrow.length.toString()} tone="amber" />
-        <MetricCard icon={CalendarDays} label="Tickets To Book" value={plannedTickets.length.toString()} tone="slate" />
+        <MetricCard icon={CalendarDays} label="Tickets to Book" value={plannedTickets.length.toString()} tone="slate" />
       </section>
 
       <section className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
-        <Panel title="Upcoming journeys" action="Next 30 days">
+        <Panel title="Upcoming Tickets" action="Next 30 Days">
           <div className="grid gap-3">
             {upcomingJourneys.map((journey) => (
               <JourneyRow
@@ -606,7 +606,7 @@ function Dashboard({
           </div>
         </Panel>
 
-        <Panel title="Booking windows" action={`${bookingSoon.length} soon`}>
+        <Panel title="Booking Windows" action={`${bookingSoon.length} Soon`}>
           <div className="space-y-3">
             {bookingSoon.map((journey) => (
               <div key={journey.id} className="rounded-lg border border-slate-200 bg-white p-3">
@@ -624,19 +624,19 @@ function Dashboard({
       </section>
 
       <section className="grid gap-5 lg:grid-cols-3">
-        <Panel title="Pending bookings" action={pendingBookings.length.toString()}>
+        <Panel title="Tickets to Book" action={pendingBookings.length.toString()}>
           <CompactJourneyList journeys={pendingBookings} trainById={trainById} />
         </Panel>
-        <Panel title="Booked tickets" action={confirmedBookings.length.toString()}>
+        <Panel title="Booked Tickets" action={confirmedBookings.length.toString()}>
           <CompactJourneyList journeys={confirmedBookings} trainById={trainById} />
         </Panel>
-        <Panel title="Upcoming holidays" action="Long weekend watch">
+        <Panel title="Upcoming Holidays" action="Long Weekend Watch">
           <div className="space-y-3">
             {holidays.slice(1, 5).map((holiday) => (
               <div key={holiday.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-950">{holiday.name}</p>
-                  <p className="text-sm text-slate-600">{holiday.region ?? holiday.type.replace("_", " ")}</p>
+                  <p className="text-sm text-slate-600">{formatEnumLabel(holiday.type)}</p>
                 </div>
                 <span className="text-sm font-medium text-slate-700">{formatDate(holiday.date)}</span>
               </div>
@@ -698,7 +698,7 @@ function Planner({
 
   return (
     <section className="grid gap-5">
-      <Panel title="Track ticket" action="PNR based">
+      <Panel title="Track Ticket" action="PNR-Based">
         <form ref={formRef} action={onCreateJourney} className="grid gap-4">
           <input type="hidden" name="trainNumber" value={trainNumber} />
           <input type="hidden" name="trainName" value={trainName} />
@@ -1284,7 +1284,7 @@ function SettingsPanel({
       )}
 
       <div className="grid items-start gap-5 xl:grid-cols-3">
-        <Panel title="Access" action={settings.allowSignups ? "Signups on" : "Signups off"}>
+        <Panel title="Access" action={settings.allowSignups ? "Signups On" : "Signups Off"}>
           <SettingToggle
             icon={UserPlus}
             label="Allow public signups"
@@ -1293,46 +1293,46 @@ function SettingsPanel({
           />
         </Panel>
 
-        <Panel title="Reminder channels" action="Global defaults">
+        <Panel title="Reminder Channels" action="Global Defaults">
           <div className="grid gap-3">
             <SettingToggle
               icon={Mail}
-              label="Email reminders"
+              label="Email Reminders"
               checked={settings.reminderEmailEnabled}
               onChange={(checked) => updateSettings({ reminderEmailEnabled: checked })}
             />
             <SettingToggle
               icon={MessageCircle}
-              label="Discord reminders"
+              label="Discord Reminders"
               checked={settings.reminderDiscordEnabled}
               onChange={(checked) => updateSettings({ reminderDiscordEnabled: checked })}
             />
             <SettingToggle
               icon={Bell}
-              label="In-app reminders"
+              label="In-App Reminders"
               checked={settings.reminderInAppEnabled}
               onChange={(checked) => updateSettings({ reminderInAppEnabled: checked })}
             />
           </div>
         </Panel>
 
-        <Panel title="Reminder schedule" action="Booking window">
+        <Panel title="Reminder Schedule" action="Booking Window">
           <div className="grid gap-3">
             <SettingToggle
               icon={CalendarDays}
-              label="7 days before booking opens"
+              label="7 Days Before Booking Opens"
               checked={settings.reminderSevenDaysEnabled}
               onChange={(checked) => updateSettings({ reminderSevenDaysEnabled: checked })}
             />
             <SettingToggle
               icon={CalendarDays}
-              label="1 day before booking opens"
+              label="1 Day Before Booking Opens"
               checked={settings.reminderOneDayEnabled}
               onChange={(checked) => updateSettings({ reminderOneDayEnabled: checked })}
             />
             <SettingToggle
               icon={Clock}
-              label="Booking-open day"
+              label="Booking Open Day"
               checked={settings.reminderBookingOpenEnabled}
               onChange={(checked) => updateSettings({ reminderBookingOpenEnabled: checked })}
             />
@@ -1340,42 +1340,53 @@ function SettingsPanel({
         </Panel>
       </div>
 
-      <Panel title="Delivery configuration" action="Email and Discord">
-        <div className="grid gap-4 lg:grid-cols-3">
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            SMTP URL
-            <input
-              type="password"
-              defaultValue={settings.smtpUrl}
-              onBlur={(event) => updateSettings({ smtpUrl: event.target.value.trim() })}
-              placeholder="smtp://user:password@mail.example.com:587"
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Email sender
-            <input
-              type="text"
-              defaultValue={settings.emailFrom}
-              onBlur={(event) => updateSettings({ emailFrom: event.target.value.trim() })}
-              placeholder="IRCTC Travel Planner <noreply@example.com>"
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium text-slate-700">
-            Discord webhook URL
-            <input
-              type="password"
-              defaultValue={settings.discordWebhookUrl}
-              onBlur={(event) => updateSettings({ discordWebhookUrl: event.target.value.trim() })}
-              placeholder="https://discord.com/api/webhooks/..."
-              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
-            />
-          </label>
+      <Panel title="Delivery Configuration" action="Channel Setup">
+        {(!settings.reminderEmailEnabled && !settings.reminderDiscordEnabled) && (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
+            Enable Email or Discord reminders to configure delivery settings.
+          </div>
+        )}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {settings.reminderEmailEnabled && (
+            <>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                SMTP URL
+                <input
+                  type="password"
+                  defaultValue={settings.smtpUrl}
+                  onBlur={(event) => updateSettings({ smtpUrl: event.target.value.trim() })}
+                  placeholder="smtp://user:password@mail.example.com:587"
+                  className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Email Sender
+                <input
+                  type="text"
+                  defaultValue={settings.emailFrom}
+                  onBlur={(event) => updateSettings({ emailFrom: event.target.value.trim() })}
+                  placeholder="IRCTC Travel Planner <noreply@example.com>"
+                  className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
+                />
+              </label>
+            </>
+          )}
+          {settings.reminderDiscordEnabled && (
+            <label className="grid gap-2 text-sm font-medium text-slate-700 lg:col-span-2">
+              Discord Webhook URL
+              <input
+                type="password"
+                defaultValue={settings.discordWebhookUrl}
+                onBlur={(event) => updateSettings({ discordWebhookUrl: event.target.value.trim() })}
+                placeholder="https://discord.com/api/webhooks/..."
+                className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
+              />
+            </label>
+          )}
         </div>
       </Panel>
 
-      <Panel title="Users" action={`${users.length} total`}>
+      <Panel title="Users" action={`${users.length} Total`}>
         <form action={createUser} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
           <div className="grid gap-3 sm:grid-cols-[1fr_1.2fr_0.7fr_auto]">
             <input name="name" placeholder="Name" className="h-10 rounded-md border border-slate-300 px-3" />
@@ -1491,7 +1502,7 @@ function HolidayPanel({
     const drafts = parseHolidayCsv(text);
 
     if (drafts.length === 0) {
-      setNotice("No valid holidays found. CSV columns should be name,date,type,region.");
+      setNotice("No valid holidays found. CSV columns should be name,date,type.");
       return;
     }
 
@@ -1528,7 +1539,7 @@ function HolidayPanel({
 
   return (
     <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
-      <Panel title="Holiday management" action="CSV and ICS ready">
+      <Panel title="Holiday Management" action="CSV and ICS">
         <div className="mb-4 flex flex-wrap gap-2">
           <button
             type="button"
@@ -1586,15 +1597,9 @@ function HolidayPanel({
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Type
                 <select name="type" defaultValue="COMPANY" className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                  <option value="NATIONAL">National</option>
-                  <option value="STATE">State</option>
                   <option value="COMPANY">Company</option>
-                  <option value="PERSONAL_LEAVE">Personal leave</option>
+                  <option value="PERSONAL_LEAVE">Personal Leave</option>
                 </select>
-              </label>
-              <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Region
-                <input name="region" className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
             </div>
             <div className="flex justify-end gap-2">
@@ -1641,7 +1646,7 @@ function HolidayPanel({
             <div key={holiday.id} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
                 <h3 className="text-sm font-semibold text-slate-950">{holiday.name}</h3>
-                <p className="mt-1 text-sm text-slate-600">{formatEnumLabel(holiday.type)}{holiday.region ? ` - ${holiday.region}` : ""}</p>
+                <p className="mt-1 text-sm text-slate-600">{formatEnumLabel(holiday.type)}</p>
               </div>
               <div className="flex items-center justify-between gap-3 sm:justify-end">
                 <span className="text-sm font-semibold text-slate-900">{formatDate(holiday.date)}</span>
@@ -1658,7 +1663,7 @@ function HolidayPanel({
           ))}
         </div>
       </Panel>
-      <Panel title="Travel suggestions" action="Long weekends">
+      <Panel title="Travel Suggestions" action="Long Weekends">
         <div className="space-y-3">
           {buildHolidaySuggestions(holidays).map((suggestion) => (
             <div key={suggestion} className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-900">
@@ -1695,9 +1700,9 @@ function AnalyticsPanel({
     <section className="grid gap-5">
       <div className="grid gap-3 md:grid-cols-4">
         <MetricCard icon={Train} label="Upcoming tickets" value={upcomingTickets.toString()} tone="slate" />
-        <MetricCard icon={Clock} label="Tickets to book" value={ticketsToBook.toString()} tone="amber" />
-        <MetricCard icon={CalendarDays} label="Booked tickets" value={bookedTickets.toString()} tone="green" />
-        <MetricCard icon={MapPin} label="Routes used" value={mostUsedRoutes.length.toString()} tone="slate" />
+        <MetricCard icon={Clock} label="Tickets to Book" value={ticketsToBook.toString()} tone="amber" />
+        <MetricCard icon={CalendarDays} label="Booked Tickets" value={bookedTickets.toString()} tone="green" />
+        <MetricCard icon={MapPin} label="Routes Used" value={mostUsedRoutes.length.toString()} tone="slate" />
       </div>
       {journeys.length === 0 && (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm font-medium text-slate-600">
@@ -1705,7 +1710,7 @@ function AnalyticsPanel({
         </div>
       )}
       <div className="grid gap-5">
-        <Panel title="Trips per month" action="Trend">
+        <Panel title="Tickets per Month" action="Trend">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthlyAnalytics}>
@@ -1719,7 +1724,7 @@ function AnalyticsPanel({
           </div>
         </Panel>
       </div>
-      <Panel title="Most used routes" action="History">
+      <Panel title="Most Used Routes" action="History">
         <div className="grid gap-3 md:grid-cols-3">
           {mostUsedRoutes.map((item) => (
             <div key={item.route} className="rounded-lg border border-slate-200 bg-white p-4">
@@ -1804,7 +1809,7 @@ function NotificationMenu({
       {open && (
         <div className="absolute right-0 z-40 mt-2 w-[320px] rounded-lg border border-slate-200 bg-white p-3 shadow-xl">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold text-slate-950">In-app reminders</h2>
+            <h2 className="text-sm font-semibold text-slate-950">In-App Reminders</h2>
             <button type="button" onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="Close reminders">
               <X className="h-4 w-4" aria-hidden />
             </button>
@@ -1986,7 +1991,6 @@ function holidayDraftFromForm(formData: FormData): HolidayDraft {
     name: String(formData.get("name") ?? "").trim(),
     date: String(formData.get("date") ?? ""),
     type: String(formData.get("type") ?? "COMPANY") as Holiday["type"],
-    region: optionalString(formData.get("region")),
   };
 }
 
@@ -1998,7 +2002,7 @@ function parseHolidayCsv(text: string): HolidayDraft[] {
 
   return rows.flatMap((row, index) => {
     const columns = splitCsvRow(row);
-    const [name, date, rawType, region] = columns;
+    const [name, date, rawType] = columns;
 
     if (index === 0 && ["name", "holiday"].includes(name?.toLowerCase())) {
       return [];
@@ -2012,7 +2016,6 @@ function parseHolidayCsv(text: string): HolidayDraft[] {
       name,
       date,
       type: normalizeHolidayType(rawType),
-      region: region?.trim() || undefined,
     }];
   });
 }
@@ -2049,7 +2052,7 @@ function normalizeHolidayType(value?: string): Holiday["type"] {
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 
-  if (["NATIONAL", "STATE", "COMPANY", "PERSONAL_LEAVE"].includes(normalized)) {
+  if (["COMPANY", "PERSONAL_LEAVE"].includes(normalized)) {
     return normalized as Holiday["type"];
   }
 

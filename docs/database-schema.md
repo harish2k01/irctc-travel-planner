@@ -8,7 +8,7 @@ The executable schema is in `prisma/schema.prisma`.
 - `Route`: origin/destination station pair owned by a user.
 - `Train`: train number, name, and classes tagged to a tracked PNR after booking.
 - `Journey`: travel plan, booking state, PNR, coach/seat, waitlist position, recurrence, and notes.
-- `JourneyReminder`: generated reminder records for 7 days before, 1 day before, and booking-open day.
+- `JourneyReminder`: generated reminder records for 7 days before, 1 day before, and booking open day.
 - `Holiday`: national, state, company, and personal leave dates.
 - `LeaveRequest`: date ranges for user leave.
 - `Notification`: email, Discord, and in-app delivery records.

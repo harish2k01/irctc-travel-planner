@@ -60,7 +60,6 @@ export type Holiday = {
   name: string;
   date: string;
   type: HolidayType;
-  region?: string;
 };
 
 export type NotificationPreference = {

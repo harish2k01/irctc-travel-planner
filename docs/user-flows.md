@@ -12,7 +12,7 @@
 
 1. Receive reminder 7 days before booking opens.
 2. Receive reminder 1 day before booking opens.
-3. See "Book Today" on dashboard when bookingOpenDate equals today.
+3. See "Book Today" on the dashboard when the booking open date is today.
 4. Open IRCTC manually or use a Phase 2 deep link.
 5. Return to Tracker.
 6. Mark status as Booked, Waitlisted, RAC, or Confirmed.

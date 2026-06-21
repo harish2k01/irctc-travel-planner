@@ -7,7 +7,7 @@ const importIcsSchema = z.object({
   icsText: z.string().min(1).optional(),
 });
 
-const holidayTypes: HolidayType[] = ["NATIONAL", "STATE", "COMPANY", "PERSONAL_LEAVE"];
+const holidayTypes: HolidayType[] = ["COMPANY", "PERSONAL_LEAVE"];
 
 export async function POST(request: Request) {
   const parsed = importIcsSchema.safeParse(await request.json());
@@ -45,13 +45,10 @@ function parseIcsHolidays(icsText: string) {
     }
 
     const category = readIcsValue(event, "CATEGORIES");
-    const location = readIcsValue(event, "LOCATION");
-
     return [{
       name,
       date,
       type: normalizeHolidayType(category),
-      region: location,
     }];
   });
 }

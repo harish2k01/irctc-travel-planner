@@ -59,7 +59,7 @@ Updates booking state and ticket details.
 
 ## `GET /holidays`
 
-Returns national, state, company, and personal leave holidays.
+Returns company holidays and personal leave days.
 
 ## `POST /holidays`
 
@@ -69,14 +69,13 @@ Creates a holiday or leave day.
 {
   "name": "Company Recharge Day",
   "date": "2026-07-03",
-  "type": "COMPANY",
-  "region": "Bengaluru"
+  "type": "COMPANY"
 }
 ```
 
 ## `GET /notifications`
 
-Returns email, Discord, and in-app notification preferences plus queued reminder payloads.
+Returns email, Discord, and In-App notification preferences plus queued reminder payloads.
 
 ## `GET /analytics`
 

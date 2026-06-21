@@ -65,8 +65,7 @@ export const updateJourneyStatusSchema = z.object({
 export const createHolidaySchema = z.object({
   name: z.string().min(2).max(120),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  type: z.enum(["NATIONAL", "STATE", "COMPANY", "PERSONAL_LEAVE"]),
-  region: z.string().max(80).optional(),
+  type: z.enum(["COMPANY", "PERSONAL_LEAVE"]),
 });
 
 export function normalizeJourneyInput(input: z.infer<typeof createJourneySchema>) {

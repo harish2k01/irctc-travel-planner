@@ -4,17 +4,17 @@
 
 ```text
 +--------------------------------------------------------------+
-| IRCTC Travel Planner           [Next 30d] [Pending] [Confirmed]|
+| IRCTC Travel Planner    [Next 30 Days] [Pending] [Confirmed] |
 +--------------------------------------------------------------+
 | [Dashboard] [Planner] [Tracker] [Calendar] [Holidays] [...]   |
 +--------------------------------------------------------------+
-| [Book Today] [Opens Tomorrow] [Tickets To Book]              |
+| [Book Today] [Opens Tomorrow] [Tickets to Book]              |
 +--------------------------------------------------------------+
-| Upcoming journeys                         | Booking windows   |
+| Upcoming Tickets                          | Booking Windows   |
 | - Train, route, travel date, status       | - Train, open date |
 | - Train, route, travel date, status       | - Train, open date |
 +-------------------------------------------+------------------+
-| Pending bookings | Booked tickets | Upcoming holidays         |
+| Tickets to Book | Booked Tickets | Upcoming Holidays         |
 +--------------------------------------------------------------+
 ```
 
@@ -24,7 +24,7 @@
 +-----------------------------------+--------------------------+
 | Track ticket                                                 |
 | PNR | Source | Destination | Travel date                    |
-| Reminder channels: Email Discord In-app                      |
+| Reminder Channels: Email Discord In-App                      |
 | Notes                                                        |
 | [Add ticket]                                                 |
 +--------------------------------------------------------------+
@@ -47,7 +47,7 @@
 | < > Today                  June 2026       Month Week Agenda  |
 +--------------------------------------------------------------+
 | Mon | Tue | Wed | Thu | Fri | Sat | Sun                       |
-| Travel, booking-open, reminder, holiday events by color       |
+| Travel, booking open, reminder, and holiday events by color   |
 +--------------------------------------------------------------+
 ```
 
@@ -55,10 +55,10 @@
 
 ```text
 +--------------------------------------------------------------+
-| [Upcoming Tickets] [Tickets To Book] [Booked Tickets] [Routes]|
+| [Upcoming Tickets] [Tickets to Book] [Booked Tickets] [Routes]|
 +--------------------------------------------------------------+
-| Trips per month chart                                        |
+| Tickets per Month chart                                      |
 +--------------------------------------------------------------+
-| Most used routes                                             |
+| Most Used Routes                                             |
 +--------------------------------------------------------------+
 ```

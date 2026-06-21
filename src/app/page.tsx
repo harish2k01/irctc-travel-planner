@@ -79,7 +79,6 @@ async function loadInitialData(userId: string): Promise<InitialData> {
       name: holiday.name,
       date: dateOnly(holiday.date),
       type: holiday.type,
-      region: holiday.region ?? undefined,
     })),
   };
 }
