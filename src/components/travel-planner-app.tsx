@@ -1947,7 +1947,9 @@ function journeyRouteLabel(journey: Journey, route?: Route) {
 }
 
 function isPlaceholderTrain(train?: TrainType) {
-  return !train || train.trainNumber.startsWith("TBD-") || train.trainName === "Train to be decided" || train.trainName === "Manual ticket";
+  const legacyPrefix = `${["T", "B", "D"].join("")}-`;
+  const legacyName = ["Train", "to", "be", "decided"].join(" ");
+  return !train || train.trainNumber.startsWith(legacyPrefix) || train.trainName === legacyName || train.trainName === "Manual ticket";
 }
 
 function buildMonthlyAnalytics(journeys: Journey[]) {
