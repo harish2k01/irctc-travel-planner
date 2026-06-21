@@ -17,6 +17,7 @@ import {
   Home,
   LogOut,
   Mail,
+  Menu,
   MapPin,
   MessageCircle,
   Pencil,
@@ -150,6 +151,7 @@ export function TravelPlannerApp({
   const [holidayItems, setHolidayItems] = useState(holidays);
   const [settings, setSettings] = useState(initialSettings);
   const [users, setUsers] = useState(initialUsers);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const visibleTabs = currentUser.role === "ADMIN" ? tabs : tabs.filter((tab) => tab.id !== "settings");
 
   const upcomingJourneys = useMemo(
@@ -350,6 +352,11 @@ export function TravelPlannerApp({
     }
   }
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.reload();
+  }
+
   const calendarEvents = [
     ...journeys.map((journey) => ({
       id: `${journey.id}-travel`,
@@ -379,52 +386,101 @@ export function TravelPlannerApp({
 
   return (
     <div className="min-h-screen bg-[#f7f8f5] text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
-          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-            <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-lg bg-slate-950 text-white">
-                <Train className="h-6 w-6" aria-hidden />
-              </div>
-              <div>
-                <h1 className="text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
-                  IRCTC Travel Planner
-                </h1>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[360px]">
-              <MiniMetric label="Next 30d" value={upcomingJourneys.length.toString()} />
-              <MiniMetric label="Pending" value={pendingBookings.length.toString()} />
-              <MiniMetric label="Confirmed" value={confirmedBookings.length.toString()} />
+      <div className="flex min-h-screen">
+        <aside
+          className={cn(
+            "sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200",
+            sidebarCollapsed ? "w-[76px]" : "w-[76px] lg:w-64",
+          )}
+          aria-label="Primary navigation"
+        >
+          <div className="flex h-16 items-center gap-2 border-b border-slate-200 px-3">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((current) => !current)}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              <Menu className="h-5 w-5" aria-hidden />
+            </button>
+            <div className={cn("min-w-0", sidebarCollapsed && "hidden", !sidebarCollapsed && "hidden lg:block")}>
+              <p className="truncate text-sm font-semibold text-slate-950">IRCTC Travel Planner</p>
+              <p className="truncate text-xs font-medium text-slate-500">Ticket tracker</p>
             </div>
           </div>
-          <nav aria-label="Primary">
-            <div className="flex gap-2 overflow-x-auto pb-1">
+
+          <nav className="flex-1 overflow-y-auto p-3">
+            <div className="grid gap-1">
               {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
+                const showLabel = !sidebarCollapsed;
                 return (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
+                    title={tab.label}
                     className={cn(
-                      "flex h-10 shrink-0 items-center gap-2 rounded-md px-3 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-slate-950",
+                      "flex h-11 w-full items-center rounded-md text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-slate-950",
+                      showLabel ? "justify-center px-0 lg:justify-start lg:gap-3 lg:px-3" : "justify-center px-0",
                       activeTab === tab.id
                         ? "bg-slate-950 text-white"
-                        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100",
+                        : "text-slate-700 hover:bg-slate-100",
                     )}
                   >
-                    <Icon className="h-4 w-4" aria-hidden />
-                    {tab.label}
+                    <Icon className="h-5 w-5 shrink-0" aria-hidden />
+                    <span className={cn("truncate", showLabel ? "hidden lg:inline" : "hidden")}>{tab.label}</span>
                   </button>
                 );
               })}
             </div>
           </nav>
-        </div>
-      </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+          <div className="border-t border-slate-200 p-3">
+            <div className={cn("mb-3 min-w-0 rounded-md bg-slate-50 p-3", sidebarCollapsed && "hidden", !sidebarCollapsed && "hidden lg:block")}>
+              <p className="truncate text-xs font-medium text-slate-500">Signed in</p>
+              <p className="mt-1 truncate text-sm font-semibold text-slate-950">{currentUser.email}</p>
+            </div>
+            <button
+              type="button"
+              onClick={logout}
+              title="Log out"
+              className={cn(
+                "flex h-10 w-full items-center rounded-md border border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600",
+                sidebarCollapsed ? "justify-center px-0" : "justify-center px-0 lg:justify-start lg:gap-3 lg:px-3",
+              )}
+            >
+              <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+              <span className={cn(sidebarCollapsed ? "hidden" : "hidden lg:inline")}>Log out</span>
+            </button>
+          </div>
+        </aside>
+
+        <div className="min-w-0 flex-1">
+          <header className="border-b border-slate-200 bg-white">
+            <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-11 w-11 place-items-center rounded-lg bg-slate-950 text-white">
+                    <Train className="h-6 w-6" aria-hidden />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-semibold tracking-normal text-slate-950 sm:text-3xl">
+                      IRCTC Travel Planner
+                    </h1>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[360px]">
+                  <MiniMetric label="Next 30d" value={upcomingJourneys.length.toString()} />
+                  <MiniMetric label="Pending" value={pendingBookings.length.toString()} />
+                  <MiniMetric label="Confirmed" value={confirmedBookings.length.toString()} />
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         {activeTab === "dashboard" && (
           <Dashboard
             journeys={journeys}
@@ -472,7 +528,9 @@ export function TravelPlannerApp({
         {activeTab === "account" && (
           <AccountPanel currentUser={currentUser} />
         )}
-      </main>
+          </main>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1227,11 +1285,6 @@ function AccountPanel({
 }: {
   currentUser: Props["currentUser"];
 }) {
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    window.location.reload();
-  }
-
   return (
     <section className="grid gap-5 lg:grid-cols-[0.75fr_1.25fr]">
       <Panel title="Account" action={currentUser.role === "ADMIN" ? "Admin" : "User"}>
@@ -1240,14 +1293,6 @@ function AccountPanel({
           <p className="mt-1 text-base font-semibold text-slate-950">{currentUser.email}</p>
           {currentUser.name && <p className="mt-1 text-sm text-slate-600">{currentUser.name}</p>}
         </div>
-        <button
-          type="button"
-          onClick={logout}
-          className="mt-4 inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700"
-        >
-          <LogOut className="h-4 w-4" aria-hidden />
-          Log out
-        </button>
       </Panel>
 
       {currentUser.role !== "ADMIN" && (
