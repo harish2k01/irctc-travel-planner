@@ -18,11 +18,11 @@ import {
   LogOut,
   Mail,
   MapPin,
+  MessageCircle,
   Pencil,
   Plus,
   Save,
   Settings,
-  Smartphone,
   Train,
   Trash2,
   Upload,
@@ -40,9 +40,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { addDays, buildJourneyReminders, calculateBookingOpenDate, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
+import { buildJourneyReminders, calculateBookingOpenDate, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
 import type { Holiday, Journey, JourneyStatus, Route, Train as TrainType } from "@/lib/types";
-import { notificationPreferences } from "@/lib/notification-preferences";
 import { cn, formatDate } from "@/lib/utils";
 
 type Props = {
@@ -106,9 +105,21 @@ const statusTone: Record<JourneyStatus, string> = {
 };
 
 type TabId = (typeof tabs)[number]["id"];
-type JourneyPatch = Partial<Omit<Journey, "id" | "bookingOpenDate">>;
+type JourneyPatch = Partial<Omit<Journey, "id" | "bookingOpenDate">> & {
+  trainNumber?: string;
+  trainName?: string;
+};
 type HolidayDraft = Omit<Holiday, "id">;
-type AppSettingsState = { allowSignups: boolean };
+type AppSettingsState = {
+  allowSignups: boolean;
+  reminderEmailEnabled: boolean;
+  reminderDiscordEnabled: boolean;
+  reminderInAppEnabled: boolean;
+  reminderSevenDaysEnabled: boolean;
+  reminderOneDayEnabled: boolean;
+  reminderBookingOpenEnabled: boolean;
+  discordWebhookUrl: string;
+};
 type ManagedUser = {
   id: string;
   email: string;
@@ -157,15 +168,17 @@ export function TravelPlannerApp({
     ["PLANNED", "BOOKING_WINDOW_OPEN", "WAITLISTED", "RAC"].includes(journey.status),
   );
   const confirmedBookings = journeys.filter((journey) => ["BOOKED", "CONFIRMED"].includes(journey.status));
-  const reminders = journeys.flatMap(buildJourneyReminders);
+  const reminders = journeys.flatMap((journey) => buildConfiguredReminders(journey, settings));
 
   const routeById = new Map(routeItems.map((route) => [route.id, route]));
   const trainById = new Map(trainItems.map((train) => [train.id, train]));
 
   async function createJourney(formData: FormData) {
     const travelDate = String(formData.get("travelDate"));
-    const trainNumber = optionalString(formData.get("trainNumber"));
-    const trainName = optionalString(formData.get("trainName"));
+    const pnr = String(formData.get("pnr") ?? "");
+    const trainNumber = optionalString(formData.get("trainNumber")) ?? `PNR-${pnr.slice(-4)}`;
+    const trainName = optionalString(formData.get("trainName")) ?? "Pending train details";
+    const preferredClass = optionalString(formData.get("preferredClass")) ?? "NA";
     const sourceCode = optionalString(formData.get("sourceCode"))?.toUpperCase();
     const sourceName = optionalString(formData.get("sourceName"));
     const destinationCode = optionalString(formData.get("destinationCode"))?.toUpperCase();
@@ -184,7 +197,7 @@ export function TravelPlannerApp({
       routeId,
       trainNumber: trainNumber ?? "",
       trainName: trainName ?? "",
-      preferredClasses: [String(formData.get("preferredClass"))],
+      preferredClasses: [preferredClass],
     };
     const newJourney: Journey = {
       id: `local-${Date.now()}`,
@@ -192,7 +205,7 @@ export function TravelPlannerApp({
       trainId: nextTrainId,
       travelDate,
       bookingOpenDate: calculateBookingOpenDate(travelDate),
-      preferredClass: String(formData.get("preferredClass")),
+      preferredClass,
       sourceCode: sourceCode ?? nextRoute.originCode,
       sourceName: sourceName ?? nextRoute.originName,
       destinationCode: destinationCode ?? nextRoute.destinationCode,
@@ -200,7 +213,8 @@ export function TravelPlannerApp({
       direction: "HOME_TO_OFFICE",
       recurrence: "ONE_TIME",
       status: "PLANNED",
-      pnr: optionalString(formData.get("pnr")),
+      pnr,
+      remindersEnabled: formData.get("remindersEnabled") === "on",
       notes: String(formData.get("notes") ?? ""),
     };
 
@@ -219,6 +233,7 @@ export function TravelPlannerApp({
           destinationCode: newJourney.destinationCode,
           destinationName: newJourney.destinationName,
           pnr: newJourney.pnr,
+          remindersEnabled: newJourney.remindersEnabled,
           notes: newJourney.notes,
         }),
       });
@@ -243,12 +258,31 @@ export function TravelPlannerApp({
   }
 
   async function updateJourney(id: string, patch: JourneyPatch) {
+    const { trainNumber, trainName, ...journeyOnlyPatch } = patch;
     const nextPatch: Partial<Journey> = {
-      ...patch,
+      ...journeyOnlyPatch,
     };
 
-    if (patch.travelDate) {
-      nextPatch.bookingOpenDate = calculateBookingOpenDate(patch.travelDate);
+    if (journeyOnlyPatch.travelDate) {
+      nextPatch.bookingOpenDate = calculateBookingOpenDate(journeyOnlyPatch.travelDate);
+    }
+
+    const currentJourney = journeys.find((journey) => journey.id === id);
+    if (currentJourney && (trainNumber || trainName)) {
+      setTrainItems((current) =>
+        current.map((train) =>
+          train.id === currentJourney.trainId
+            ? {
+                ...train,
+                trainNumber: trainNumber ?? train.trainNumber,
+                trainName: trainName ?? train.trainName,
+                preferredClasses: journeyOnlyPatch.preferredClass
+                  ? Array.from(new Set([journeyOnlyPatch.preferredClass, ...train.preferredClasses]))
+                  : train.preferredClasses,
+              }
+            : train,
+        ),
+      );
     }
 
     setJourneys((current) =>
@@ -411,7 +445,6 @@ export function TravelPlannerApp({
         {activeTab === "tracker" && (
           <Tracker
             journeys={journeys}
-            trains={trainItems}
             trainById={trainById}
             routeById={routeById}
             onUpdateJourney={updateJourney}
@@ -546,14 +579,13 @@ function Planner({
   const [trainNumber, setTrainNumber] = useState("");
   const [trainName, setTrainName] = useState("");
   const [travelDate, setTravelDate] = useState("");
-  const [preferredClass, setPreferredClass] = useState("3A");
+  const [preferredClass, setPreferredClass] = useState("");
   const [pnr, setPnr] = useState("");
   const [sourceCode, setSourceCode] = useState("");
   const [sourceName, setSourceName] = useState("");
   const [destinationCode, setDestinationCode] = useState("");
   const [destinationName, setDestinationName] = useState("");
   const [pnrMessage, setPnrMessage] = useState<string | null>(null);
-  const bookingOpenDate = travelDate ? calculateBookingOpenDate(travelDate) : "";
 
   async function syncPnrForCreate() {
     if (!/^\d{10}$/.test(pnr)) {
@@ -581,13 +613,16 @@ function Planner({
     if (data.sourceName) setSourceName(data.sourceName);
     if (data.destinationCode) setDestinationCode(data.destinationCode);
     if (data.destinationName) setDestinationName(data.destinationName);
-    setPnrMessage("PNR details loaded. Review and save the journey.");
+    setPnrMessage("PNR details loaded. Review and save the ticket.");
   }
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[0.95fr_1.05fr]">
-      <Panel title="Create journey" action="60-day booking window">
+    <section className="grid gap-5">
+      <Panel title="Track ticket" action="PNR based">
         <form ref={formRef} action={onCreateJourney} className="grid gap-4">
+          <input type="hidden" name="trainNumber" value={trainNumber} />
+          <input type="hidden" name="trainName" value={trainName} />
+          <input type="hidden" name="preferredClass" value={preferredClass} />
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             PNR number
             <div className="flex gap-2">
@@ -597,6 +632,7 @@ function Planner({
                 value={pnr}
                 onChange={(event) => setPnr(event.target.value)}
                 placeholder="10 digit PNR"
+                required
                 className="h-11 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
               />
               <button
@@ -615,14 +651,6 @@ function Planner({
             </div>
           )}
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Train number
-              <input name="trainNumber" value={trainNumber} onChange={(event) => setTrainNumber(event.target.value.toUpperCase())} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-            </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Train name
-              <input name="trainName" value={trainName} onChange={(event) => setTrainName(event.target.value)} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
-            </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Source station code
               <input name="sourceCode" value={sourceCode} onChange={(event) => setSourceCode(event.target.value.toUpperCase())} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
@@ -650,15 +678,11 @@ function Planner({
                 className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
               />
             </label>
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Preferred class
-              <select name="preferredClass" value={preferredClass} onChange={(event) => setPreferredClass(event.target.value)} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                {Array.from(new Set(["2A", "3A", "SL", "CC", "EC", "2S"])).map((coachClass) => (
-                  <option key={coachClass} value={coachClass}>{coachClass}</option>
-                ))}
-              </select>
-            </label>
           </div>
+          <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
+            Enable reminders for this ticket
+            <input name="remindersEnabled" type="checkbox" defaultChecked className="h-5 w-5" />
+          </label>
           <label className="grid gap-2 text-sm font-medium text-slate-700">
             Notes
             <textarea
@@ -670,42 +694,9 @@ function Planner({
           </label>
           <button className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950">
             <Plus className="h-4 w-4" aria-hidden />
-            Add journey
+            Add ticket
           </button>
         </form>
-      </Panel>
-      <Panel title="Generated reminders" action={bookingOpenDate ? formatDate(bookingOpenDate) : "Set travel date"}>
-        <div className="grid gap-3">
-          {(bookingOpenDate ? [
-            { label: "7 days before booking opens", date: addDays(bookingOpenDate, -7) },
-            { label: "1 day before booking opens", date: addDays(bookingOpenDate, -1) },
-            { label: "At booking open time", date: bookingOpenDate },
-          ] : []).map((reminder) => (
-            <div key={reminder.label} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-3">
-                <Bell className="h-5 w-5 text-blue-700" aria-hidden />
-                <span className="text-sm font-medium text-slate-800">{reminder.label}</span>
-              </div>
-              <span className="text-sm font-semibold text-slate-950">{formatDate(reminder.date)}</span>
-            </div>
-          ))}
-          {!bookingOpenDate && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
-              Select a travel date to generate booking reminders.
-            </div>
-          )}
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          {notificationPreferences.map((preference) => (
-            <div key={preference.channel} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm font-medium text-slate-700">
-              {preference.channel === "EMAIL" ? <Mail className="h-4 w-4" /> : preference.channel === "PUSH" ? <Smartphone className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-              {preference.channel.replace("_", " ")}
-              <span className="ml-auto h-5 w-9 rounded-full bg-emerald-600 p-0.5">
-                <span className="block h-4 w-4 translate-x-4 rounded-full bg-white" />
-              </span>
-            </div>
-          ))}
-        </div>
       </Panel>
     </section>
   );
@@ -713,14 +704,12 @@ function Planner({
 
 function Tracker({
   journeys,
-  trains,
   trainById,
   routeById,
   onUpdateJourney,
   onDeleteJourney,
 }: {
   journeys: Journey[];
-  trains: TrainType[];
   trainById: Map<string, TrainType>;
   routeById: Map<string, Route>;
   onUpdateJourney: (id: string, patch: JourneyPatch) => void;
@@ -742,7 +731,7 @@ function Tracker({
       routeId: train?.routeId ?? editingJourney.routeId,
       trainId,
       travelDate: String(formData.get("travelDate")),
-      preferredClass: String(formData.get("preferredClass")),
+      preferredClass: optionalString(formData.get("preferredClass")),
       sourceCode: optionalString(formData.get("sourceCode")),
       sourceName: optionalString(formData.get("sourceName")),
       destinationCode: optionalString(formData.get("destinationCode")),
@@ -752,8 +741,11 @@ function Tracker({
       pnr: optionalString(formData.get("pnr")),
       coach: optionalString(formData.get("coach")),
       seat: optionalString(formData.get("seat")),
+      trainNumber: optionalString(formData.get("trainNumber")),
+      trainName: optionalString(formData.get("trainName")),
       bookingDate: optionalString(formData.get("bookingDate")),
       waitlistPosition: waitlistPosition ? Number(waitlistPosition) : undefined,
+      remindersEnabled: formData.get("remindersEnabled") === "on",
     });
     setEditingJourney(null);
     setPnrSyncMessage(null);
@@ -811,9 +803,18 @@ function Tracker({
                     <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
                       <Meta label="Travel" value={formatDate(journey.travelDate)} />
                       <Meta label="Book" value={formatDate(journey.bookingOpenDate)} />
-                      <Meta label="Class" value={journey.preferredClass} />
+                      <Meta label="Class" value={journey.preferredClass === "NA" ? "Not tagged" : journey.preferredClass} />
                       <Meta label="PNR" value={journey.pnr ?? "Not added"} />
                     </dl>
+                    <div className="mt-3 flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                      Reminders
+                      <input
+                        type="checkbox"
+                        checked={journey.remindersEnabled ?? true}
+                        onChange={(event) => onUpdateJourney(journey.id, { remindersEnabled: event.target.checked })}
+                        className="h-4 w-4"
+                      />
+                    </div>
                     <div className="mt-3 flex gap-2">
                       <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Upload ticket attachment">
                         <Upload className="h-4 w-4" aria-hidden />
@@ -868,14 +869,13 @@ function Tracker({
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Train
-                <select name="trainId" defaultValue={editingJourney.trainId} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950">
-                  {trains.map((train) => (
-                    <option key={train.id} value={train.id}>
-                      {train.trainNumber} {train.trainName}
-                    </option>
-                  ))}
-                </select>
+                Tagged train number
+                <input name="trainNumber" defaultValue={trainById.get(editingJourney.trainId)?.trainNumber ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              </label>
+              <label className="grid gap-2 text-sm font-medium text-slate-700">
+                Tagged train name
+                <input name="trainName" defaultValue={trainById.get(editingJourney.trainId)?.trainName ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                <input type="hidden" name="trainId" value={editingJourney.trainId} />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Status
@@ -890,8 +890,8 @@ function Tracker({
                 <input name="travelDate" type="date" defaultValue={editingJourney.travelDate} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
-                Preferred class
-                <input name="preferredClass" defaultValue={editingJourney.preferredClass} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+                Booked class
+                <input name="preferredClass" defaultValue={editingJourney.preferredClass === "NA" ? "" : editingJourney.preferredClass} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
               </label>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Source station code
@@ -938,6 +938,10 @@ function Tracker({
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Waitlist position
                 <input name="waitlistPosition" type="number" min="1" defaultValue={editingJourney.waitlistPosition ?? ""} className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
+              </label>
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
+                Enable reminders for this ticket
+                <input name="remindersEnabled" type="checkbox" defaultChecked={editingJourney.remindersEnabled ?? true} className="h-5 w-5" />
               </label>
             </div>
             <label className="mt-4 grid gap-2 text-sm font-medium text-slate-700">
@@ -1011,16 +1015,25 @@ function SettingsPanel({
 }) {
   const [notice, setNotice] = useState<string | null>(null);
 
-  async function toggleSignups(nextValue: boolean) {
+  async function updateSettings(patch: Partial<AppSettingsState>) {
     const response = await fetch("/api/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ allowSignups: nextValue }),
+      body: JSON.stringify(patch),
     });
     const payload = await response.json();
 
     if (response.ok) {
-      onSettingsChange({ allowSignups: payload.data.allowSignups });
+      onSettingsChange({
+        allowSignups: payload.data.allowSignups,
+        reminderEmailEnabled: payload.data.reminderEmailEnabled,
+        reminderDiscordEnabled: payload.data.reminderDiscordEnabled,
+        reminderInAppEnabled: payload.data.reminderInAppEnabled,
+        reminderSevenDaysEnabled: payload.data.reminderSevenDaysEnabled,
+        reminderOneDayEnabled: payload.data.reminderOneDayEnabled,
+        reminderBookingOpenEnabled: payload.data.reminderBookingOpenEnabled,
+        discordWebhookUrl: payload.data.discordWebhookUrl ?? "",
+      });
     } else {
       setNotice(payload.error ?? "Could not update settings.");
     }
@@ -1086,7 +1099,7 @@ function SettingsPanel({
           <input
             type="checkbox"
             checked={settings.allowSignups}
-            onChange={(event) => toggleSignups(event.target.checked)}
+            onChange={(event) => updateSettings({ allowSignups: event.target.checked })}
             className="h-5 w-5"
           />
         </label>
@@ -1095,6 +1108,59 @@ function SettingsPanel({
             {notice}
           </div>
         )}
+      </Panel>
+
+      <Panel title="Reminder settings" action="Email, Discord, in-app">
+        <div className="grid gap-3">
+          <SettingToggle
+            icon={Mail}
+            label="Email reminders"
+            checked={settings.reminderEmailEnabled}
+            onChange={(checked) => updateSettings({ reminderEmailEnabled: checked })}
+          />
+          <SettingToggle
+            icon={MessageCircle}
+            label="Discord reminders"
+            checked={settings.reminderDiscordEnabled}
+            onChange={(checked) => updateSettings({ reminderDiscordEnabled: checked })}
+          />
+          <SettingToggle
+            icon={Bell}
+            label="In-app reminders"
+            checked={settings.reminderInAppEnabled}
+            onChange={(checked) => updateSettings({ reminderInAppEnabled: checked })}
+          />
+          <label className="grid gap-2 text-sm font-medium text-slate-700">
+            Discord webhook URL
+            <input
+              type="url"
+              defaultValue={settings.discordWebhookUrl}
+              onBlur={(event) => updateSettings({ discordWebhookUrl: event.target.value.trim() })}
+              placeholder="https://discord.com/api/webhooks/..."
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950"
+            />
+          </label>
+        </div>
+        <div className="mt-4 grid gap-3">
+          <SettingToggle
+            icon={CalendarDays}
+            label="7 days before booking opens"
+            checked={settings.reminderSevenDaysEnabled}
+            onChange={(checked) => updateSettings({ reminderSevenDaysEnabled: checked })}
+          />
+          <SettingToggle
+            icon={CalendarDays}
+            label="1 day before booking opens"
+            checked={settings.reminderOneDayEnabled}
+            onChange={(checked) => updateSettings({ reminderOneDayEnabled: checked })}
+          />
+          <SettingToggle
+            icon={Clock}
+            label="Booking-open day"
+            checked={settings.reminderBookingOpenEnabled}
+            onChange={(checked) => updateSettings({ reminderBookingOpenEnabled: checked })}
+          />
+        </div>
       </Panel>
 
       <Panel title="Users" action={`${users.length} total`}>
@@ -1192,6 +1258,31 @@ function AccountPanel({
         </Panel>
       )}
     </section>
+  );
+}
+
+function SettingToggle({
+  icon: Icon,
+  label,
+  checked,
+  onChange,
+}: {
+  icon: LucideIcon;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
+      <Icon className="h-4 w-4 text-slate-500" aria-hidden />
+      {label}
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="ml-auto h-5 w-5"
+      />
+    </label>
   );
 }
 
@@ -1624,6 +1715,18 @@ function buildMonthlyAnalytics(journeys: Journey[]) {
       ...item,
       month: formatMonthLabel(item.month),
     }));
+}
+
+function buildConfiguredReminders(journey: Journey, settings: AppSettingsState) {
+  if (journey.remindersEnabled === false) {
+    return [];
+  }
+
+  return buildJourneyReminders(journey).filter((reminder) => {
+    if (reminder.type === "SEVEN_DAYS_BEFORE") return settings.reminderSevenDaysEnabled;
+    if (reminder.type === "ONE_DAY_BEFORE") return settings.reminderOneDayEnabled;
+    return settings.reminderBookingOpenEnabled;
+  });
 }
 
 function formatMonthLabel(monthKey: string) {

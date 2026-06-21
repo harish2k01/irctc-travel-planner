@@ -77,10 +77,10 @@ export async function POST(request: Request) {
     } else {
       const sourceCode = normalized.sourceCode?.trim().toUpperCase();
       const destinationCode = normalized.destinationCode?.trim().toUpperCase();
-      const trainNumber = normalized.trainNumber?.trim();
-      const trainName = normalized.trainName?.trim();
+      const trainNumber = normalized.trainNumber?.trim() || `PNR-${normalized.pnr.slice(-4)}`;
+      const trainName = normalized.trainName?.trim() || "Pending train details";
 
-      if (!sourceCode || !destinationCode || !trainNumber || !trainName) {
+      if (!sourceCode || !destinationCode) {
         return null;
       }
 
@@ -140,21 +140,24 @@ export async function POST(request: Request) {
         status: normalized.status,
         notes: normalized.notes,
         pnr: normalized.pnr,
+        remindersEnabled: normalized.remindersEnabled ?? true,
       },
     });
 
-    await tx.journeyReminder.createMany({
-      data: buildJourneyReminders({
-        ...normalized,
-        id: journey.id,
-        routeId,
-        trainId,
-      }).map((reminder) => ({
-        journeyId: journey.id,
-        type: reminder.type,
-        dueAt: toDate(reminder.dueDate),
-      })),
-    });
+    if (journey.remindersEnabled) {
+      await tx.journeyReminder.createMany({
+        data: buildJourneyReminders({
+          ...normalized,
+          id: journey.id,
+          routeId,
+          trainId,
+        }).map((reminder) => ({
+          journeyId: journey.id,
+          type: reminder.type,
+          dueAt: toDate(reminder.dueDate),
+        })),
+      });
+    }
 
     return journey;
   });

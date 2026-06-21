@@ -37,35 +37,63 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const data = await prisma.$transaction(async (tx) => {
+    if (parsed.data.trainNumber || parsed.data.trainName) {
+      const currentTrain = await tx.train.findFirst({
+        where: {
+          id: existing.trainId,
+          route: { userId: user.id },
+        },
+      });
+
+      if (currentTrain) {
+        await tx.train.update({
+          where: { id: currentTrain.id },
+          data: {
+            trainNumber: parsed.data.trainNumber ?? currentTrain.trainNumber,
+            trainName: parsed.data.trainName ?? currentTrain.trainName,
+            preferredClasses: parsed.data.preferredClass
+              ? Array.from(new Set([parsed.data.preferredClass, ...currentTrain.preferredClasses]))
+              : currentTrain.preferredClasses,
+          },
+        });
+      }
+    }
+
+    const journeyPatch = { ...parsed.data };
+    delete journeyPatch.trainNumber;
+    delete journeyPatch.trainName;
     const journey = await tx.journey.update({
       where: { id },
       data: {
-        ...parsed.data,
+        ...journeyPatch,
         travelDate: toDate(parsed.data.travelDate),
         bookingOpenDate: toDate(bookingOpenDate),
         bookingDate: toDate(parsed.data.bookingDate),
       },
     });
 
-    if (bookingOpenDate) {
+    if (bookingOpenDate || parsed.data.remindersEnabled !== undefined) {
       await tx.journeyReminder.deleteMany({ where: { journeyId: id } });
-      await tx.journeyReminder.createMany({
-        data: buildJourneyReminders({
-          id,
-          routeId: journey.routeId,
-          trainId: journey.trainId,
-          travelDate: parsed.data.travelDate ?? journey.travelDate.toISOString().slice(0, 10),
-          bookingOpenDate,
-          preferredClass: journey.preferredClass,
-          direction: journey.direction,
-          recurrence: journey.recurrence,
-          status: journey.status,
-        }).map((reminder) => ({
-          journeyId: id,
-          type: reminder.type,
-          dueAt: toDate(reminder.dueDate) as Date,
-        })),
-      });
+      if (journey.remindersEnabled) {
+        const nextBookingOpenDate = bookingOpenDate ?? journey.bookingOpenDate.toISOString().slice(0, 10);
+        await tx.journeyReminder.createMany({
+          data: buildJourneyReminders({
+            id,
+            routeId: journey.routeId,
+            trainId: journey.trainId,
+            travelDate: parsed.data.travelDate ?? journey.travelDate.toISOString().slice(0, 10),
+            bookingOpenDate: nextBookingOpenDate,
+            preferredClass: journey.preferredClass,
+            direction: journey.direction,
+            recurrence: journey.recurrence,
+            status: journey.status,
+          }).map((reminder) => ({
+            journeyId: id,
+            type: reminder.type,
+            dueAt: toDate(reminder.dueDate) as Date,
+          })),
+        });
+      }
     }
 
     return journey;

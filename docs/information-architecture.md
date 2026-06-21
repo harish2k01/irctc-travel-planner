@@ -8,10 +8,10 @@
    - Pending and confirmed booking summaries
    - Upcoming holidays and long-weekend signals
 2. Planner
-   - Quick journey creation
-   - Manual train, source, and destination entry
+   - Quick ticket tracking
+   - Manual source and destination entry
    - PNR-backed ticket detail sync
-   - Preferred class and notes
+   - Notes and per-ticket reminder toggle
    - Generated booking-open date and reminder dates
 3. Tracker
    - Kanban columns by journey state
@@ -43,5 +43,5 @@
 - JourneyReminder is generated from bookingOpenDate.
 - Holiday can be system-level or user-owned.
 - LeaveRequest is user-owned and feeds calendar/suggestions.
-- Notification tracks delivery across email, push, and in-app channels.
+- Notification tracks delivery across email, Discord, and in-app channels.
 - Attachment stores ticket PDFs/screenshots through object storage keys.

@@ -18,18 +18,16 @@ export const createJourneySchema = z.object({
   trainNumber: z.string().min(1).max(12).optional(),
   trainName: z.string().min(1).max(120).optional(),
   travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  preferredClass: z.string().min(1),
+  preferredClass: z.string().min(1).optional(),
   sourceCode: z.string().max(16).optional(),
   sourceName: z.string().max(120).optional(),
   destinationCode: z.string().max(16).optional(),
   destinationName: z.string().max(120).optional(),
   direction: z.enum(["HOME_TO_OFFICE", "OFFICE_TO_HOME"]).optional(),
   recurrence: z.enum(["ONE_TIME", "WEEKLY", "CUSTOM"]).optional(),
-  pnr: z.string().regex(/^\d{10}$/).optional(),
+  pnr: z.string().regex(/^\d{10}$/),
   notes: z.string().max(500).optional(),
-}).refine((input) => Boolean(input.trainId || (input.trainNumber && input.trainName)), {
-  message: "Provide an existing train or train number and name.",
-  path: ["trainNumber"],
+  remindersEnabled: z.boolean().optional(),
 }).refine((input) => Boolean(input.routeId || (input.sourceCode && input.destinationCode)), {
   message: "Provide an existing route or source and destination station codes.",
   path: ["sourceCode"],
@@ -39,6 +37,8 @@ export const updateJourneyStatusSchema = z.object({
   status: journeyStatusSchema.optional(),
   routeId: z.string().min(1).optional(),
   trainId: z.string().min(1).optional(),
+  trainNumber: z.string().min(1).max(12).optional(),
+  trainName: z.string().min(1).max(120).optional(),
   travelDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   preferredClass: z.string().min(1).optional(),
   sourceCode: z.string().max(16).optional(),
@@ -53,6 +53,7 @@ export const updateJourneyStatusSchema = z.object({
   seat: z.string().max(12).optional(),
   bookingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   waitlistPosition: z.number().int().positive().optional(),
+  remindersEnabled: z.boolean().optional(),
 });
 
 export const createHolidaySchema = z.object({
@@ -66,6 +67,7 @@ export function normalizeJourneyInput(input: z.infer<typeof createJourneySchema>
   return {
     ...input,
     bookingOpenDate: calculateBookingOpenDate(input.travelDate),
+    preferredClass: input.preferredClass ?? "NA",
     direction: input.direction ?? "HOME_TO_OFFICE",
     recurrence: input.recurrence ?? "ONE_TIME",
     status: "PLANNED" as const,

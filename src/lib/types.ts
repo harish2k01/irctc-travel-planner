@@ -49,6 +49,7 @@ export type Journey = {
   seat?: string;
   bookingDate?: string;
   waitlistPosition?: number;
+  remindersEnabled?: boolean;
 };
 
 export type Holiday = {
@@ -60,7 +61,7 @@ export type Holiday = {
 };
 
 export type NotificationPreference = {
-  channel: "EMAIL" | "PUSH" | "IN_APP";
+  channel: "EMAIL" | "DISCORD" | "IN_APP";
   enabled: boolean;
 };
 

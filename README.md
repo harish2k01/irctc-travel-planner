@@ -28,6 +28,8 @@ The app starts with a first-admin signup screen when PostgreSQL is configured an
 
 Admins can disable public signups from Settings, create users, edit user access, and delete users. When SMTP is configured, newly created users receive a temporary password by email and are forced to reset it on first login.
 
+Reminder channels and reminder timing are controlled from Admin Settings. Email, Discord webhook, and in-app reminders can be enabled globally, while each tracked ticket also has its own reminder toggle.
+
 ## Run With PostgreSQL
 
 ```bash
@@ -181,7 +183,7 @@ k8s                      Kubernetes manifests
 ## Next Iterations
 
 - Add optional Google Sign-In.
-- Add notification workers for email, Web Push, and in-app delivery.
+- Add notification workers for email, Discord webhook, and in-app delivery.
 - Add attachment upload to object storage.
 - Add CSV export and holiday CSV/ICS import processors.
 - Add optional IRCTC deep links without automation.

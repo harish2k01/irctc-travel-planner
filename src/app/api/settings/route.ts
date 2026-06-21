@@ -5,7 +5,14 @@ import { prisma } from "@/lib/db";
 import { getAppSettings } from "@/lib/settings";
 
 const settingsSchema = z.object({
-  allowSignups: z.boolean(),
+  allowSignups: z.boolean().optional(),
+  reminderEmailEnabled: z.boolean().optional(),
+  reminderDiscordEnabled: z.boolean().optional(),
+  reminderInAppEnabled: z.boolean().optional(),
+  reminderSevenDaysEnabled: z.boolean().optional(),
+  reminderOneDayEnabled: z.boolean().optional(),
+  reminderBookingOpenEnabled: z.boolean().optional(),
+  discordWebhookUrl: z.string().url().or(z.literal("")).optional(),
 });
 
 export async function GET() {
@@ -24,7 +31,10 @@ export async function PATCH(request: Request) {
 
   const settings = await prisma.appSettings.update({
     where: { id: "global" },
-    data: { allowSignups: parsed.data.allowSignups },
+    data: {
+      ...parsed.data,
+      discordWebhookUrl: parsed.data.discordWebhookUrl === "" ? null : parsed.data.discordWebhookUrl,
+    },
   });
 
   return NextResponse.json({ data: settings });

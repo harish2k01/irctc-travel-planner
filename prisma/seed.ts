@@ -12,7 +12,16 @@ async function main() {
   await prisma.appSettings.upsert({
     where: { id: "global" },
     update: {},
-    create: { id: "global", allowSignups: true },
+    create: {
+      id: "global",
+      allowSignups: true,
+      reminderEmailEnabled: true,
+      reminderDiscordEnabled: false,
+      reminderInAppEnabled: true,
+      reminderSevenDaysEnabled: true,
+      reminderOneDayEnabled: true,
+      reminderBookingOpenEnabled: true,
+    },
   });
 
   await prisma.user.deleteMany({

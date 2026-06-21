@@ -55,6 +55,7 @@ async function loadInitialData(userId: string): Promise<InitialData> {
       seat: journey.seat ?? undefined,
       bookingDate: journey.bookingDate ? dateOnly(journey.bookingDate) : undefined,
       waitlistPosition: journey.waitlistPosition ?? undefined,
+      remindersEnabled: journey.remindersEnabled,
     })),
     routes: dbRoutes.map((route) => ({
       id: route.id,
@@ -124,7 +125,16 @@ export default async function Home() {
   return (
     <TravelPlannerApp
       currentUser={currentUser}
-      initialSettings={{ allowSignups: settings.allowSignups }}
+      initialSettings={{
+        allowSignups: settings.allowSignups,
+        reminderEmailEnabled: settings.reminderEmailEnabled,
+        reminderDiscordEnabled: settings.reminderDiscordEnabled,
+        reminderInAppEnabled: settings.reminderInAppEnabled,
+        reminderSevenDaysEnabled: settings.reminderSevenDaysEnabled,
+        reminderOneDayEnabled: settings.reminderOneDayEnabled,
+        reminderBookingOpenEnabled: settings.reminderBookingOpenEnabled,
+        discordWebhookUrl: settings.discordWebhookUrl ?? "",
+      }}
       initialUsers={users.map((user) => ({
         ...user,
         name: user.name ?? undefined,

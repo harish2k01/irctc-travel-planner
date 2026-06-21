@@ -22,7 +22,7 @@
 
 ```text
 +-----------------------------------+--------------------------+
-| Create journey                    | Generated reminders      |
+| Track ticket                      | Reminder settings        |
 | Train select                      | 7 days before            |
 | Travel date | Class               | 1 day before             |
 | Direction    | Recurrence         | Booking open             |
