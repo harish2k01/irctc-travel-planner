@@ -40,7 +40,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { buildJourneyReminders, calculateBookingOpenDate, daysBetween, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
+import { calculateBookingOpenDate, daysBetween, getBookingUrgency, isWithinNextDays } from "@/lib/dates";
 import type { Holiday, Journey, Route, Train as TrainType } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -104,8 +104,10 @@ type HolidaySuggestion = {
   date: string;
   priority: number;
   tone: "warning" | "info" | "success";
+  journeyId?: string;
 };
 type ReminderAction = {
+  journeyId: string;
   id: string;
   routeLabel: string;
   travelDate: string;
@@ -113,6 +115,14 @@ type ReminderAction = {
   headline: string;
   detail: string;
   tone: "red" | "amber" | "slate";
+};
+type CalendarEvent = {
+  id: string;
+  title: string;
+  date: string;
+  color: string;
+  journeyId?: string;
+  type: "travel" | "booking" | "holiday";
 };
 
 const reminderChannelOptions = [
@@ -160,6 +170,7 @@ export function TravelPlannerApp({
   const [users, setUsers] = useState(initialUsers);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const visibleTabs = currentUser.role === "ADMIN" ? tabs : tabs.filter((tab) => tab.id !== "settings");
   const activeTabDetails = visibleTabs.find((tab) => tab.id === activeTab) ?? visibleTabs[0];
 
@@ -203,10 +214,14 @@ export function TravelPlannerApp({
   );
   const routeById = new Map(routeItems.map((route) => [route.id, route]));
   const trainById = new Map(trainItems.map((train) => [train.id, train]));
+  const selectedJourney = selectedJourneyId ? journeys.find((journey) => journey.id === selectedJourneyId) ?? null : null;
   const pendingBookings = journeys.filter((journey) => !journey.pnr && !["CANCELLED", "COMPLETED"].includes(journey.status));
   const confirmedBookings = journeys.filter((journey) => Boolean(journey.pnr));
-  const reminders = journeys.flatMap((journey) => buildConfiguredReminders(journey, settings));
   const inAppReminderActions = buildReminderActions(journeys, routeById, settings, today);
+
+  function openJourneyDetails(id: string) {
+    setSelectedJourneyId(id);
+  }
 
   async function createJourney(formData: FormData) {
     const travelDate = String(formData.get("travelDate"));
@@ -352,6 +367,10 @@ export function TravelPlannerApp({
     } catch {
       // Local state remains editable in preview/offline mode.
     }
+
+    if (selectedJourneyId === id) {
+      setSelectedJourneyId(null);
+    }
   }
 
   async function createHoliday(draft: HolidayDraft) {
@@ -399,30 +418,29 @@ export function TravelPlannerApp({
     window.location.reload();
   }
 
-  const calendarEvents = [
+  const calendarEvents: CalendarEvent[] = [
     ...journeys.map((journey) => ({
       id: `${journey.id}-travel`,
-      title: `${journeyRouteLabel(journey, routeById.get(journey.routeId))} Travel`,
+      title: `Travel ${journeyRouteLabel(journey, routeById.get(journey.routeId))}`,
       date: journey.travelDate,
       color: ["CONFIRMED", "BOOKED"].includes(journey.status) ? "#15803d" : "#334155",
+      journeyId: journey.id,
+      type: "travel" as const,
     })),
     ...journeys.map((journey) => ({
       id: `${journey.id}-booking`,
-      title: `Booking Opens ${journeyRouteLabel(journey, routeById.get(journey.routeId))}`,
+      title: `Book ${journeyRouteLabel(journey, routeById.get(journey.routeId))}`,
       date: journey.bookingOpenDate,
       color: getBookingUrgency(journey, today).tone === "red" ? "#dc2626" : "#d97706",
-    })),
-    ...reminders.map((reminder) => ({
-      id: reminder.id,
-      title: "Reminder",
-      date: reminder.dueDate,
-      color: "#2563eb",
+      journeyId: journey.id,
+      type: "booking" as const,
     })),
     ...holidayItems.map((holiday) => ({
       id: holiday.id,
       title: holiday.name,
       date: holiday.date,
       color: holiday.type === "PERSONAL_LEAVE" ? "#7c3aed" : "#0f766e",
+      type: "holiday" as const,
     })),
   ];
 
@@ -504,21 +522,21 @@ export function TravelPlannerApp({
 
         <div className="min-w-0 flex-1">
           <header className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            <div className="mx-auto flex max-w-7xl flex-col gap-3 px-3 py-3 sm:px-4 lg:px-6">
+              <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
                 <div>
                   <h1 className="text-2xl font-semibold tracking-normal text-slate-950">
                     {activeTabDetails.label}
                   </h1>
                 </div>
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <NotificationMenu
                     open={notificationsOpen}
                     actions={inAppReminderActions}
                     onToggle={() => setNotificationsOpen((current) => !current)}
                     onClose={() => setNotificationsOpen(false)}
-                    onOpenTracker={() => {
-                      setActiveTab("tracker");
+                    onOpenTicket={(id) => {
+                      openJourneyDetails(id);
                       setNotificationsOpen(false);
                     }}
                   />
@@ -532,7 +550,7 @@ export function TravelPlannerApp({
             </div>
           </header>
 
-          <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+          <main className="mx-auto flex max-w-7xl flex-col gap-4 px-3 py-4 sm:px-4 lg:px-6">
         {activeTab === "dashboard" && (
           <Dashboard
             journeys={journeys}
@@ -543,6 +561,7 @@ export function TravelPlannerApp({
             confirmedBookings={confirmedBookings}
             routeById={routeById}
             today={today}
+            onOpenJourney={openJourneyDetails}
           />
         )}
         {activeTab === "planner" && (
@@ -555,12 +574,13 @@ export function TravelPlannerApp({
             routeById={routeById}
             settings={settings}
             today={today}
+            onOpenJourney={openJourneyDetails}
             onUpdateJourney={updateJourney}
             onDeleteJourney={deleteJourney}
           />
         )}
         {activeTab === "calendar" && (
-          <CalendarPanel events={calendarEvents} />
+          <CalendarPanel events={calendarEvents} onOpenJourney={openJourneyDetails} />
         )}
         {activeTab === "holidays" && (
           <HolidayPanel
@@ -571,6 +591,7 @@ export function TravelPlannerApp({
             onCreateHoliday={createHoliday}
             onImportHolidays={importHolidays}
             onDeleteHoliday={deleteHoliday}
+            onOpenJourney={openJourneyDetails}
           />
         )}
         {activeTab === "analytics" && (
@@ -588,6 +609,18 @@ export function TravelPlannerApp({
           </main>
         </div>
       </div>
+      {selectedJourney && (
+        <TicketDetailModal
+          journey={selectedJourney}
+          route={routeById.get(selectedJourney.routeId)}
+          today={today}
+          onClose={() => setSelectedJourneyId(null)}
+          onOpenTracker={() => {
+            setActiveTab("tracker");
+            setSelectedJourneyId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -601,6 +634,7 @@ function Dashboard({
   confirmedBookings,
   routeById,
   today,
+  onOpenJourney,
 }: {
   journeys: Journey[];
   holidays: Holiday[];
@@ -610,6 +644,7 @@ function Dashboard({
   confirmedBookings: Journey[];
   routeById: Map<string, Route>;
   today: string;
+  onOpenJourney: (id: string) => void;
 }) {
   const bookToday = journeys.filter((journey) => getBookingUrgency(journey, today).daysUntilOpen <= 0 && journey.status === "PLANNED");
   const opensTomorrow = journeys.filter((journey) => getBookingUrgency(journey, today).daysUntilOpen === 1);
@@ -623,46 +658,53 @@ function Dashboard({
         <MetricCard icon={CalendarDays} label="Tickets to Book" value={plannedTickets.length.toString()} tone="slate" />
       </section>
 
-      <section className="grid gap-5 lg:grid-cols-[1.35fr_0.65fr]">
+      <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
         <Panel title="Upcoming Tickets" action="Next 30 Days">
-          <div className="grid gap-3">
+          <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white">
             {upcomingJourneys.map((journey) => (
               <JourneyRow
                 key={journey.id}
                 journey={journey}
                 route={routeById.get(journey.routeId)}
                 today={today}
+                onOpen={() => onOpenJourney(journey.id)}
               />
             ))}
+            {upcomingJourneys.length === 0 && (
+              <div className="p-4 text-sm font-medium text-slate-500">No tickets in the next 30 days.</div>
+            )}
           </div>
         </Panel>
 
         <Panel title="Booking Windows" action={`${bookingSoon.length} Soon`}>
-          <div className="space-y-3">
+          <div className="max-h-72 space-y-2 overflow-y-auto">
             {bookingSoon.map((journey) => (
-              <div key={journey.id} className="rounded-lg border border-slate-200 bg-white p-3">
+              <button key={journey.id} type="button" onClick={() => onOpenJourney(journey.id)} className="block w-full rounded-lg border border-slate-200 bg-white p-3 text-left hover:bg-slate-50">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-950">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
-                    <p className="mt-1 text-sm text-slate-600">{formatDate(journey.bookingOpenDate)} booking open</p>
+                    <p className="mt-1 text-sm text-slate-600">Book on {formatDate(journey.bookingOpenDate)} for travel on {formatDate(journey.travelDate)}</p>
                   </div>
                   <StatusPill journey={journey} today={today} />
                 </div>
-              </div>
+              </button>
             ))}
+            {bookingSoon.length === 0 && (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-500">No booking windows in the next 7 days.</div>
+            )}
           </div>
         </Panel>
       </section>
 
-      <section className="grid gap-5 lg:grid-cols-3">
+      <section className="grid gap-4 lg:grid-cols-3">
         <Panel title="Tickets to Book" action={pendingBookings.length.toString()}>
-          <CompactJourneyList journeys={pendingBookings} routeById={routeById} />
+          <CompactJourneyList journeys={pendingBookings} routeById={routeById} onOpenJourney={onOpenJourney} />
         </Panel>
         <Panel title="Booked Tickets" action={confirmedBookings.length.toString()}>
-          <CompactJourneyList journeys={confirmedBookings} routeById={routeById} />
+          <CompactJourneyList journeys={confirmedBookings} routeById={routeById} onOpenJourney={onOpenJourney} />
         </Panel>
         <Panel title="Upcoming Holidays" action="Long Weekend Watch">
-          <div className="space-y-3">
+          <div className="max-h-72 space-y-2 overflow-y-auto">
             {holidays.slice(1, 5).map((holiday) => (
               <div key={holiday.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
                 <div>
@@ -920,6 +962,7 @@ function Tracker({
   routeById,
   settings,
   today,
+  onOpenJourney,
   onUpdateJourney,
   onDeleteJourney,
 }: {
@@ -928,6 +971,7 @@ function Tracker({
   routeById: Map<string, Route>;
   settings: AppSettingsState;
   today: string;
+  onOpenJourney: (id: string) => void;
   onUpdateJourney: (id: string, patch: JourneyPatch) => void;
   onDeleteJourney: (id: string) => void;
 }) {
@@ -1020,6 +1064,7 @@ function Tracker({
         settings={settings}
         today={today}
         onFilterChange={setTicketFilter}
+        onOpen={onOpenJourney}
         onEdit={(journey) => {
           setEditingJourney(journey);
           setPnrSyncMessage(null);
@@ -1147,6 +1192,7 @@ function TicketTable({
   settings,
   today,
   onFilterChange,
+  onOpen,
   onEdit,
   onDelete,
   onUpdateJourney,
@@ -1160,6 +1206,7 @@ function TicketTable({
   settings: AppSettingsState;
   today: string;
   onFilterChange: (filter: "all" | "toBook" | "booked") => void;
+  onOpen: (id: string) => void;
   onEdit: (journey: Journey) => void;
   onDelete: (id: string) => void;
   onUpdateJourney: (id: string, patch: JourneyPatch) => void;
@@ -1172,7 +1219,7 @@ function TicketTable({
 
   return (
     <Panel title="Tickets" action={`${journeys.length} Shown`}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
           {filters.map((item) => (
             <button
@@ -1196,43 +1243,45 @@ function TicketTable({
         <table className="w-full min-w-[900px] border-collapse text-left text-sm">
           <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
             <tr>
-              <th className="px-4 py-3">Route</th>
-              <th className="px-4 py-3">Travel</th>
-              <th className="px-4 py-3">Book</th>
-              <th className="px-4 py-3">PNR</th>
-              <th className="px-4 py-3">Reminders</th>
-              <th className="px-4 py-3 text-right">Actions</th>
+              <th className="px-3 py-2.5">Route</th>
+              <th className="px-3 py-2.5">Travel</th>
+              <th className="px-3 py-2.5">Book</th>
+              <th className="px-3 py-2.5">PNR</th>
+              <th className="px-3 py-2.5">Reminders</th>
+              <th className="px-3 py-2.5 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
         {journeys.length === 0 && (
           <tr>
-            <td colSpan={6} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
+            <td colSpan={6} className="px-3 py-6 text-center text-sm font-medium text-slate-500">
               No tickets match this view.
             </td>
           </tr>
         )}
         {journeys.map((journey) => (
           <tr key={journey.id} className="align-top hover:bg-slate-50">
-            <td className="px-4 py-3">
-              <p className="font-semibold text-slate-950">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
+            <td className="px-3 py-2.5">
+              <button type="button" onClick={() => onOpen(journey.id)} className="text-left font-semibold text-slate-950 hover:text-blue-700">
+                {journeyRouteLabel(journey, routeById.get(journey.routeId))}
+              </button>
               <StatusPill journey={journey} today={today} />
             </td>
-            <td className="px-4 py-3 font-medium text-slate-800">{formatDate(journey.travelDate)}</td>
-            <td className="px-4 py-3 font-medium text-slate-800">{formatDate(journey.bookingOpenDate)}</td>
-            <td className="px-4 py-3">
+            <td className="px-3 py-2.5 font-medium text-slate-800">{formatDate(journey.travelDate)}</td>
+            <td className="px-3 py-2.5 font-medium text-slate-800">{formatDate(journey.bookingOpenDate)}</td>
+            <td className="px-3 py-2.5">
               <p className="font-medium text-slate-800">{journey.pnr ?? "Not added"}</p>
               {journey.pnr && <p className="mt-1 text-xs text-slate-500">{[journey.coach, journey.seat].filter(Boolean).join(" ") || "Seat not synced"}</p>}
             </td>
-            <td className="px-4 py-3">
+            <td className="px-3 py-2.5">
               <ReminderChannelButtons
                 journey={journey}
                 settings={settings}
                 onUpdate={(patch) => onUpdateJourney(journey.id, patch)}
               />
             </td>
-            <td className="px-4 py-3">
-              <div className="flex justify-end gap-2">
+            <td className="px-3 py-2.5">
+              <div className="flex justify-end gap-1.5">
                 <button className="grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700" aria-label="Upload ticket attachment" title="Upload">
                   <Upload className="h-4 w-4" aria-hidden />
                 </button>
@@ -1268,10 +1317,10 @@ function TicketTable({
   );
 }
 
-function CalendarPanel({ events }: { events: Array<{ id: string; title: string; date: string; color: string }> }) {
+function CalendarPanel({ events, onOpenJourney }: { events: CalendarEvent[]; onOpenJourney: (id: string) => void }) {
   return (
-    <Panel title="Unified calendar" action="Month, week, agenda">
-      <div className="calendar-shell rounded-lg border border-slate-200 bg-white p-3">
+    <Panel title="Calendar" action="Month, Week, Agenda">
+      <div className="calendar-shell rounded-lg border border-slate-200 bg-white p-2">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
           initialView="dayGridMonth"
@@ -1288,6 +1337,13 @@ function CalendarPanel({ events }: { events: Array<{ id: string; title: string; 
           }}
           events={events}
           editable
+          dayMaxEventRows={3}
+          eventClick={(info) => {
+            const journeyId = info.event.extendedProps.journeyId as string | undefined;
+            if (journeyId) {
+              onOpenJourney(journeyId);
+            }
+          }}
           height="auto"
         />
       </div>
@@ -1591,6 +1647,7 @@ function HolidayPanel({
   onCreateHoliday,
   onImportHolidays,
   onDeleteHoliday,
+  onOpenJourney,
 }: {
   holidays: Holiday[];
   journeys: Journey[];
@@ -1599,6 +1656,7 @@ function HolidayPanel({
   onCreateHoliday: (draft: HolidayDraft) => Promise<void>;
   onImportHolidays: (drafts: HolidayDraft[]) => Promise<void>;
   onDeleteHoliday: (id: string) => void;
+  onOpenJourney: (id: string) => void;
 }) {
   const csvInputRef = useRef<HTMLInputElement>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1657,9 +1715,9 @@ function HolidayPanel({
   }
 
   return (
-    <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
+    <section className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
       <Panel title="Holiday Management" action="CSV and ICS">
-        <div className="mb-4 flex flex-wrap gap-2">
+        <div className="mb-3 flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setShowAddForm((current) => !current)}
@@ -1755,14 +1813,14 @@ function HolidayPanel({
           </form>
         )}
 
-        <div className="space-y-3">
+        <div className="max-h-[34rem] space-y-2 overflow-y-auto">
           {holidays.length === 0 && (
             <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm font-medium text-slate-600">
               No holidays yet. Add one manually, import a CSV, or sync an ICS calendar.
             </div>
           )}
           {holidays.map((holiday) => (
-            <div key={holiday.id} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div key={holiday.id} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_auto] sm:items-center">
               <div>
                 <h3 className="text-sm font-semibold text-slate-950">{holiday.name}</h3>
                 <p className="mt-1 text-sm text-slate-600">{formatEnumLabel(holiday.type)}</p>
@@ -1783,12 +1841,22 @@ function HolidayPanel({
         </div>
       </Panel>
       <Panel title="Travel Suggestions" action="Long Weekends">
-        <div className="space-y-3">
+        <div className="max-h-[34rem] space-y-2 overflow-y-auto">
           {buildHolidaySuggestions(holidays, journeys, routeById, today).map((suggestion) => (
-            <div key={suggestion.id} className={cn("rounded-lg border p-4", holidaySuggestionTone[suggestion.tone])}>
+            <button
+              key={suggestion.id}
+              type="button"
+              onClick={() => suggestion.journeyId && onOpenJourney(suggestion.journeyId)}
+              disabled={!suggestion.journeyId}
+              className={cn(
+                "block w-full rounded-lg border p-3 text-left disabled:cursor-default disabled:hover:translate-y-0",
+                holidaySuggestionTone[suggestion.tone],
+                suggestion.journeyId && "hover:shadow-sm",
+              )}
+            >
               <p className="text-sm font-semibold">{suggestion.title}</p>
               <p className="mt-1 text-sm">{suggestion.body}</p>
-            </div>
+            </button>
           ))}
         </div>
       </Panel>
@@ -1860,8 +1928,8 @@ function AnalyticsPanel({
 
 function Panel({ title, action, children }: { title: string; action?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-slate-950">{title}</h2>
         {action && <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{action}</span>}
       </div>
@@ -1878,21 +1946,21 @@ function MetricCard({ icon: Icon, label, value, tone }: { icon: LucideIcon; labe
     slate: "border-slate-200 bg-white text-slate-800",
   };
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between">
-        <div className={cn("grid h-10 w-10 place-items-center rounded-md border", tones[tone])}>
+        <div className={cn("grid h-9 w-9 place-items-center rounded-md border", tones[tone])}>
           <Icon className="h-5 w-5" aria-hidden />
         </div>
       </div>
-      <p className="mt-4 text-sm font-medium text-slate-600">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-950">{value}</p>
+      <p className="mt-3 text-sm font-medium text-slate-600">{label}</p>
+      <p className="mt-1 text-xl font-semibold text-slate-950">{value}</p>
     </div>
   );
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-white px-3 py-2">
+    <div className="rounded-md bg-white px-2.5 py-1.5">
       <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-slate-950">{value}</p>
     </div>
@@ -1904,13 +1972,13 @@ function NotificationMenu({
   actions,
   onToggle,
   onClose,
-  onOpenTracker,
+  onOpenTicket,
 }: {
   open: boolean;
   actions: ReminderAction[];
   onToggle: () => void;
   onClose: () => void;
-  onOpenTracker: () => void;
+  onOpenTicket: (id: string) => void;
 }) {
   return (
     <div className="relative">
@@ -1942,8 +2010,13 @@ function NotificationMenu({
                 No ticket needs booking attention right now.
               </div>
             )}
-            {actions.slice(0, 6).map((action) => (
-              <div key={action.id} className="rounded-md border border-slate-200 bg-slate-50 p-3">
+            {actions.slice(0, 8).map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                onClick={() => onOpenTicket(action.journeyId)}
+                className="block w-full rounded-md border border-slate-200 bg-slate-50 p-3 text-left hover:bg-white hover:shadow-sm"
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-950">{action.routeLabel}</p>
@@ -1957,20 +2030,75 @@ function NotificationMenu({
                   <Meta label="Travel" value={formatDate(action.travelDate)} />
                   <Meta label="Book" value={formatDate(action.bookingOpenDate)} />
                 </dl>
-              </div>
+              </button>
             ))}
           </div>
-          {actions.length > 0 && (
-            <button
-              type="button"
-              onClick={onOpenTracker}
-              className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-md bg-slate-950 px-3 text-sm font-semibold text-white"
-            >
-              Open Tracker
-            </button>
-          )}
         </div>
       )}
+    </div>
+  );
+}
+
+function TicketDetailModal({
+  journey,
+  route,
+  today,
+  onClose,
+  onOpenTracker,
+}: {
+  journey: Journey;
+  route?: Route;
+  today: string;
+  onClose: () => void;
+  onOpenTracker: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/35 p-4" role="dialog" aria-modal="true" aria-label="Ticket details">
+      <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-4 shadow-2xl">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-500">Ticket Details</p>
+            <h2 className="mt-1 text-lg font-semibold text-slate-950">{journeyRouteLabel(journey, route)}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100" aria-label="Close ticket details">
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <StatusPill journey={journey} today={today} />
+          {journey.pnr ? (
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">PNR tagged</span>
+          ) : (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">PNR not added</span>
+          )}
+        </div>
+
+        <dl className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm sm:grid-cols-2">
+          <Meta label="Travel Date" value={formatDate(journey.travelDate)} />
+          <Meta label="Booking Opens" value={formatDate(journey.bookingOpenDate)} />
+          <Meta label="Source" value={`${journey.sourceCode ?? route?.originCode ?? "-"} ${journey.sourceName ?? route?.originName ?? ""}`.trim()} />
+          <Meta label="Destination" value={`${journey.destinationCode ?? route?.destinationCode ?? "-"} ${journey.destinationName ?? route?.destinationName ?? ""}`.trim()} />
+          <Meta label="PNR" value={journey.pnr ?? "Not added"} />
+          <Meta label="Seat" value={[journey.coach, journey.seat].filter(Boolean).join(" ") || "Not synced"} />
+        </dl>
+
+        {journey.notes && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase text-slate-500">Notes</p>
+            <p className="mt-1 text-sm text-slate-700">{journey.notes}</p>
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="inline-flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+            Close
+          </button>
+          <button type="button" onClick={onOpenTracker} className="inline-flex h-9 items-center rounded-md bg-slate-950 px-3 text-sm font-semibold text-white">
+            Open Tracker
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1979,15 +2107,17 @@ function JourneyRow({
   journey,
   route,
   today,
+  onOpen,
 }: {
   journey: Journey;
   route?: Route;
   today: string;
+  onOpen: () => void;
 }) {
   return (
-    <article className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 md:grid-cols-[1fr_auto] md:items-center">
+    <button type="button" onClick={onOpen} className="grid w-full gap-3 border-b border-slate-200 bg-white p-3 text-left last:border-b-0 hover:bg-slate-50 md:grid-cols-[1fr_auto] md:items-center">
       <div className="flex items-start gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-md bg-blue-50 text-blue-700">
+        <div className="grid h-9 w-9 place-items-center rounded-md bg-blue-50 text-blue-700">
           <Train className="h-5 w-5" aria-hidden />
         </div>
         <div>
@@ -1998,21 +2128,32 @@ function JourneyRow({
       <div className="flex items-center gap-2">
         <StatusPill journey={journey} today={today} />
       </div>
-    </article>
+    </button>
   );
 }
 
-function CompactJourneyList({ journeys, routeById }: { journeys: Journey[]; routeById: Map<string, Route> }) {
+function CompactJourneyList({
+  journeys,
+  routeById,
+  onOpenJourney,
+}: {
+  journeys: Journey[];
+  routeById: Map<string, Route>;
+  onOpenJourney: (id: string) => void;
+}) {
   return (
-    <div className="space-y-3">
-      {journeys.slice(0, 4).map((journey) => (
-        <div key={journey.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+    <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+      {journeys.slice(0, 8).map((journey) => (
+        <button key={journey.id} type="button" onClick={() => onOpenJourney(journey.id)} className="flex w-full items-center justify-between gap-3 border-b border-slate-200 p-3 text-left last:border-b-0 hover:bg-slate-50">
           <div>
             <p className="text-sm font-semibold text-slate-950">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
             <p className="text-sm text-slate-600">{formatDate(journey.travelDate)}</p>
           </div>
-        </div>
+        </button>
       ))}
+      {journeys.length === 0 && (
+        <div className="p-4 text-sm font-medium text-slate-500">No tickets in this view.</div>
+      )}
     </div>
   );
 }
@@ -2080,32 +2221,6 @@ function buildMonthlyAnalytics(journeys: Journey[]) {
     }));
 }
 
-function buildConfiguredReminders(journey: Journey, settings: AppSettingsState, channel?: "EMAIL" | "DISCORD" | "IN_APP") {
-  if (journey.remindersEnabled === false) {
-    return [];
-  }
-
-  const channelEnabled = {
-    EMAIL: settings.reminderEmailEnabled && journey.reminderEmailEnabled !== false,
-    DISCORD: settings.reminderDiscordEnabled && journey.reminderDiscordEnabled === true,
-    IN_APP: settings.reminderInAppEnabled && journey.reminderInAppEnabled !== false,
-  };
-
-  if (channel) {
-    if (!channelEnabled[channel]) {
-      return [];
-    }
-  } else if (!channelEnabled.EMAIL && !channelEnabled.DISCORD && !channelEnabled.IN_APP) {
-    return [];
-  }
-
-  return buildJourneyReminders(journey).filter((reminder) => {
-    if (reminder.type === "SEVEN_DAYS_BEFORE") return settings.reminderSevenDaysEnabled;
-    if (reminder.type === "ONE_DAY_BEFORE") return settings.reminderOneDayEnabled;
-    return settings.reminderBookingOpenEnabled;
-  });
-}
-
 function buildReminderActions(
   journeys: Journey[],
   routeById: Map<string, Route>,
@@ -2124,6 +2239,7 @@ function buildReminderActions(
       if (daysUntilOpen <= 0 && settings.reminderBookingOpenEnabled) {
         return [{
           id: `${journey.id}-booking-open`,
+          journeyId: journey.id,
           routeLabel: journeyRouteLabel(journey, routeById.get(journey.routeId)),
           travelDate: journey.travelDate,
           bookingOpenDate: journey.bookingOpenDate,
@@ -2136,6 +2252,7 @@ function buildReminderActions(
       if (daysUntilOpen === 1 && settings.reminderOneDayEnabled) {
         return [{
           id: `${journey.id}-tomorrow`,
+          journeyId: journey.id,
           routeLabel: journeyRouteLabel(journey, routeById.get(journey.routeId)),
           travelDate: journey.travelDate,
           bookingOpenDate: journey.bookingOpenDate,
@@ -2148,6 +2265,7 @@ function buildReminderActions(
       if (daysUntilOpen > 1 && daysUntilOpen <= 7 && settings.reminderSevenDaysEnabled) {
         return [{
           id: `${journey.id}-soon`,
+          journeyId: journey.id,
           routeLabel: journeyRouteLabel(journey, routeById.get(journey.routeId)),
           travelDate: journey.travelDate,
           bookingOpenDate: journey.bookingOpenDate,
@@ -2359,6 +2477,7 @@ function buildHolidaySuggestions(
           date: journey.travelDate,
           priority: 0,
           tone: "warning",
+          journeyId: journey.id,
         });
       } else if (Math.abs(travelGap) <= 3) {
         const relation = travelGap > 0 ? `${travelGap} day${travelGap === 1 ? "" : "s"} before` : `${Math.abs(travelGap)} day${Math.abs(travelGap) === 1 ? "" : "s"} after`;
@@ -2369,6 +2488,7 @@ function buildHolidaySuggestions(
           date: minDate(holiday.date, journey.travelDate),
           priority: 2,
           tone: "warning",
+          journeyId: journey.id,
         });
       }
 
@@ -2376,19 +2496,21 @@ function buildHolidaySuggestions(
         addSuggestion({
           id: `${holiday.id}-${journey.id}-same-booking`,
           title: "Booking Opens on Leave Day",
-          body: `Booking for ${route} opens on ${holiday.name}. Keep an in-app reminder enabled so the booking window is not missed.`,
+          body: `Booking for ${route}, travel on ${formatDate(journey.travelDate)}, opens on ${holiday.name}. Keep an in-app reminder enabled so the booking window is not missed.`,
           date: journey.bookingOpenDate,
           priority: 0,
           tone: "warning",
+          journeyId: journey.id,
         });
       } else if (Math.abs(bookingGap) <= 1) {
         addSuggestion({
           id: `${holiday.id}-${journey.id}-near-booking`,
           title: "Holiday Near Booking Window",
-          body: `${holiday.name} is close to the booking-open date for ${route}. Check reminders and be ready before the window opens.`,
+          body: `${holiday.name} is close to the booking date for ${route}, travel on ${formatDate(journey.travelDate)}. Check reminders and be ready before the window opens.`,
           date: minDate(holiday.date, journey.bookingOpenDate),
           priority: 2,
           tone: "info",
+          journeyId: journey.id,
         });
       }
     }
@@ -2405,6 +2527,7 @@ function buildHolidaySuggestions(
         date: journey.travelDate,
         priority: 3,
         tone: "info",
+        journeyId: journey.id,
       });
     }
 
@@ -2412,10 +2535,11 @@ function buildHolidaySuggestions(
       addSuggestion({
         id: `${journey.id}-weekend-booking`,
         title: "Booking Opens on a Weekend",
-        body: `Booking for ${route} opens on ${weekdayName(journey.bookingOpenDate)}. Since weekends are default leave days, keep an in-app reminder enabled.`,
+        body: `Booking for ${route}, travel on ${formatDate(journey.travelDate)}, opens on ${weekdayName(journey.bookingOpenDate)}. Since weekends are default leave days, keep an in-app reminder enabled.`,
         date: journey.bookingOpenDate,
         priority: 1,
         tone: "warning",
+        journeyId: journey.id,
       });
     }
 
@@ -2423,10 +2547,11 @@ function buildHolidaySuggestions(
       addSuggestion({
         id: `${journey.id}-booking-soon`,
         title: "Booking Window Coming Up",
-        body: `${route} opens for booking on ${formatDate(journey.bookingOpenDate)}. Keep at least one reminder channel enabled for this ticket.`,
+        body: `${route} opens for booking on ${formatDate(journey.bookingOpenDate)} for travel on ${formatDate(journey.travelDate)}. Keep at least one reminder channel enabled for this ticket.`,
         date: journey.bookingOpenDate,
         priority: 1,
         tone: "warning",
+        journeyId: journey.id,
       });
     }
   }
