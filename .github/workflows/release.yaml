@@ -247,6 +247,8 @@ jobs:
           push: true
           provenance: false
           sbom: false
+          build-args: |
+            APP_VERSION=${{ needs.release.outputs.version }}
           tags: ${{ steps.tags.outputs.tags }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}

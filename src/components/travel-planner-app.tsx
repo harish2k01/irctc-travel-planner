@@ -30,7 +30,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -135,6 +135,8 @@ const reminderActionTone: Record<ReminderAction["tone"], string> = {
   slate: "bg-slate-200 text-slate-700",
 };
 
+const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "development";
+
 function LayoutIcon(props: React.ComponentProps<typeof Home>) {
   return <Home {...props} />;
 }
@@ -160,6 +162,36 @@ export function TravelPlannerApp({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const visibleTabs = currentUser.role === "ADMIN" ? tabs : tabs.filter((tab) => tab.id !== "settings");
   const activeTabDetails = visibleTabs.find((tab) => tab.id === activeTab) ?? visibleTabs[0];
+
+  useEffect(() => {
+    if (appVersion === "development") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function checkVersion() {
+      try {
+        const response = await fetch("/api/version", { cache: "no-store" });
+        const payload = await response.json();
+        const deployedVersion = typeof payload.version === "string" ? payload.version : appVersion;
+
+        if (!cancelled && deployedVersion !== appVersion) {
+          window.location.reload();
+        }
+      } catch {
+        // Version checks should never interrupt normal app usage.
+      }
+    }
+
+    void checkVersion();
+    const interval = window.setInterval(checkVersion, 60_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const upcomingJourneys = useMemo(
     () => journeys.filter((journey) => isWithinNextDays(journey.travelDate, today, 30)),

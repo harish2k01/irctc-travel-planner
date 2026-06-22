@@ -40,6 +40,8 @@ jobs:
           push: false
           provenance: false
           sbom: false
+          build-args: |
+            APP_VERSION=pr-${{ github.event.pull_request.number }}
           tags: ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}

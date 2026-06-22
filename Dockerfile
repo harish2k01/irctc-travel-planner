@@ -6,7 +6,9 @@ RUN npm ci --ignore-scripts
 
 FROM node:24-alpine AS builder
 WORKDIR /app
+ARG APP_VERSION=development
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 RUN apk add --no-cache libc6-compat openssl
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -15,8 +17,10 @@ RUN npm run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
+ARG APP_VERSION=development
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
 RUN apk add --no-cache libc6-compat openssl
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
