@@ -450,13 +450,13 @@ export function TravelPlannerApp({
         <aside
           className={cn(
             "sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200",
-            sidebarCollapsed ? "w-24" : "w-24 lg:w-72",
+            sidebarCollapsed ? "w-16" : "w-16 lg:w-60",
           )}
           aria-label="Primary navigation"
         >
-          <div className="flex h-16 items-center gap-2 border-b border-slate-200 px-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-slate-950 text-white">
-              <Train className="h-5 w-5" aria-hidden />
+          <div className={cn("flex h-14 items-center border-b border-slate-200 px-2", sidebarCollapsed ? "justify-center" : "justify-between gap-2")}>
+            <div className={cn("grid shrink-0 place-items-center rounded-lg bg-slate-950 text-white", sidebarCollapsed ? "hidden" : "h-9 w-9")}>
+              <Train className="h-4 w-4" aria-hidden />
             </div>
             <div className={cn("min-w-0 flex-1", sidebarCollapsed && "hidden", !sidebarCollapsed && "hidden lg:block")}>
               <p className="truncate text-sm font-semibold text-slate-950">IRCTC Travel Planner</p>
@@ -465,15 +465,15 @@ export function TravelPlannerApp({
             <button
               type="button"
               onClick={() => setSidebarCollapsed((current) => !current)}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
               aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              <Menu className="h-5 w-5" aria-hidden />
+              <Menu className="h-4 w-4" aria-hidden />
             </button>
           </div>
 
-          <nav className="flex-1 overflow-y-auto p-3">
+          <nav className="flex-1 overflow-y-auto p-2">
             <div className="grid gap-1">
               {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
@@ -485,14 +485,14 @@ export function TravelPlannerApp({
                     onClick={() => setActiveTab(tab.id)}
                     title={tab.label}
                     className={cn(
-                      "flex h-11 w-full items-center rounded-md text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-slate-950",
-                      showLabel ? "justify-center px-0 lg:justify-start lg:gap-3 lg:px-3" : "justify-center px-0",
+                      "flex h-10 w-full items-center rounded-md text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-slate-950",
+                      showLabel ? "justify-center px-0 lg:justify-start lg:gap-2.5 lg:px-2.5" : "justify-center px-0",
                       activeTab === tab.id
                         ? "bg-slate-950 text-white"
                         : "text-slate-700 hover:bg-slate-100",
                     )}
                   >
-                    <Icon className="h-5 w-5 shrink-0" aria-hidden />
+                    <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden />
                     <span className={cn("truncate", showLabel ? "hidden lg:inline" : "hidden")}>{tab.label}</span>
                   </button>
                 );
@@ -500,18 +500,18 @@ export function TravelPlannerApp({
             </div>
           </nav>
 
-          <div className="border-t border-slate-200 p-3">
-            <div className={cn("mb-3 min-w-0 rounded-md bg-slate-50 p-3", sidebarCollapsed && "hidden", !sidebarCollapsed && "hidden lg:block")}>
+          <div className="border-t border-slate-200 p-2">
+            <div className={cn("mb-2 min-w-0 rounded-md bg-slate-50 p-2.5", sidebarCollapsed && "hidden", !sidebarCollapsed && "hidden lg:block")}>
               <p className="truncate text-xs font-medium text-slate-500">Signed in</p>
-              <p className="mt-1 truncate text-sm font-semibold text-slate-950">{currentUser.email}</p>
+              <p className="mt-0.5 truncate text-xs font-semibold text-slate-950">{currentUser.email}</p>
             </div>
             <button
               type="button"
               onClick={logout}
               title="Log out"
               className={cn(
-                "flex h-10 w-full items-center rounded-md border border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600",
-                sidebarCollapsed ? "justify-center px-0" : "justify-center px-0 lg:justify-start lg:gap-3 lg:px-3",
+                "flex h-9 w-full items-center rounded-md border border-red-200 bg-red-50 text-sm font-semibold text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600",
+                sidebarCollapsed ? "justify-center px-0" : "justify-center px-0 lg:justify-start lg:gap-2.5 lg:px-2.5",
               )}
             >
               <LogOut className="h-4 w-4 shrink-0" aria-hidden />
@@ -522,10 +522,10 @@ export function TravelPlannerApp({
 
         <div className="min-w-0 flex-1">
           <header className="border-b border-slate-200 bg-white">
-            <div className="mx-auto flex max-w-7xl flex-col gap-3 px-3 py-3 sm:px-4 lg:px-6">
-              <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+            <div className="flex w-full flex-col gap-2 px-3 py-2 sm:px-4">
+              <div className="flex flex-col justify-between gap-2 lg:flex-row lg:items-center">
                 <div>
-                  <h1 className="text-2xl font-semibold tracking-normal text-slate-950">
+                  <h1 className="text-xl font-semibold tracking-normal text-slate-950">
                     {activeTabDetails.label}
                   </h1>
                 </div>
@@ -540,7 +540,7 @@ export function TravelPlannerApp({
                       setNotificationsOpen(false);
                     }}
                   />
-                  <div className="grid grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[360px]">
+                  <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[300px]">
                     <MiniMetric label="Next 30 Days" value={upcomingJourneys.length.toString()} />
                     <MiniMetric label="Pending" value={pendingBookings.length.toString()} />
                     <MiniMetric label="Booked" value={confirmedBookings.length.toString()} />
@@ -550,7 +550,7 @@ export function TravelPlannerApp({
             </div>
           </header>
 
-          <main className="mx-auto flex max-w-7xl flex-col gap-4 px-3 py-4 sm:px-4 lg:px-6">
+          <main className="flex w-full flex-col gap-3 px-3 py-3 sm:px-4">
         {activeTab === "dashboard" && (
           <Dashboard
             journeys={journeys}
@@ -652,13 +652,13 @@ function Dashboard({
 
   return (
     <>
-      <section className="grid gap-3 md:grid-cols-3" aria-label="Dashboard summary">
+      <section className="grid gap-2.5 md:grid-cols-3" aria-label="Dashboard summary">
         <MetricCard icon={AlertTriangle} label="Book Today" value={bookToday.length.toString()} tone="red" />
         <MetricCard icon={Clock} label="Booking Opens Tomorrow" value={opensTomorrow.length.toString()} tone="amber" />
         <MetricCard icon={CalendarDays} label="Tickets to Book" value={plannedTickets.length.toString()} tone="slate" />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+      <section className="grid items-start gap-3 lg:grid-cols-[1.35fr_0.65fr]">
         <Panel title="Upcoming Tickets" action="Next 30 Days">
           <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white">
             {upcomingJourneys.map((journey) => (
@@ -671,7 +671,7 @@ function Dashboard({
               />
             ))}
             {upcomingJourneys.length === 0 && (
-              <div className="p-4 text-sm font-medium text-slate-500">No tickets in the next 30 days.</div>
+              <div className="p-3 text-sm font-medium text-slate-500">No tickets in the next 30 days.</div>
             )}
           </div>
         </Panel>
@@ -679,7 +679,7 @@ function Dashboard({
         <Panel title="Booking Windows" action={`${bookingSoon.length} Soon`}>
           <div className="max-h-72 space-y-2 overflow-y-auto">
             {bookingSoon.map((journey) => (
-              <button key={journey.id} type="button" onClick={() => onOpenJourney(journey.id)} className="block w-full rounded-lg border border-slate-200 bg-white p-3 text-left hover:bg-slate-50">
+              <button key={journey.id} type="button" onClick={() => onOpenJourney(journey.id)} className="block w-full rounded-md border border-slate-200 bg-white p-2.5 text-left hover:bg-slate-50">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-slate-950">{journeyRouteLabel(journey, routeById.get(journey.routeId))}</p>
@@ -690,13 +690,13 @@ function Dashboard({
               </button>
             ))}
             {bookingSoon.length === 0 && (
-              <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-500">No booking windows in the next 7 days.</div>
+              <div className="rounded-md border border-dashed border-slate-300 bg-white p-3 text-sm font-medium text-slate-500">No booking windows in the next 7 days.</div>
             )}
           </div>
         </Panel>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid items-start gap-3 lg:grid-cols-3">
         <Panel title="Tickets to Book" action={pendingBookings.length.toString()}>
           <CompactJourneyList journeys={pendingBookings} routeById={routeById} onOpenJourney={onOpenJourney} />
         </Panel>
@@ -770,9 +770,9 @@ function Planner({
   }
 
   return (
-    <section className="grid gap-5">
+    <section className="grid gap-3">
       <Panel title="Add Ticket" action="PNR optional">
-        <form ref={formRef} action={onCreateJourney} className="grid gap-4">
+        <form ref={formRef} action={onCreateJourney} className="grid gap-3">
           <input type="hidden" name="trainNumber" value={trainNumber} />
           <input type="hidden" name="trainName" value={trainName} />
           <input type="hidden" name="preferredClass" value={preferredClass} />
@@ -806,7 +806,7 @@ function Planner({
               {pnrMessage}
             </div>
           )}
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Source station code
               <input name="sourceCode" value={sourceCode} onChange={(event) => setSourceCode(event.target.value.toUpperCase())} required className="h-11 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
@@ -1075,8 +1075,8 @@ function Tracker({
 
       {editingJourney && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-          <form key={JSON.stringify(editingJourney)} action={submitEdit} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between gap-3">
+          <form key={JSON.stringify(editingJourney)} action={submitEdit} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <h2 className="text-base font-semibold text-slate-950">Edit Ticket</h2>
               <button
                 type="button"
@@ -1090,7 +1090,7 @@ function Tracker({
                 <X className="h-4 w-4" aria-hidden />
               </button>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2">
               <input type="hidden" name="trainId" value={editingJourney.trainId} />
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Travel date
@@ -1445,14 +1445,14 @@ function SettingsPanel({
   }
 
   return (
-    <section className="grid gap-5">
+    <section className="grid gap-3">
       {notice && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
           {notice}
         </div>
       )}
 
-      <div className="grid items-start gap-5 xl:grid-cols-3">
+      <div className="grid items-start gap-3 xl:grid-cols-3">
         <Panel title="Access" action={settings.allowSignups ? "Signups On" : "Signups Off"}>
           <SettingToggle
             icon={UserPlus}
@@ -1463,7 +1463,7 @@ function SettingsPanel({
         </Panel>
 
         <Panel title="Reminder Channels" action="Global Defaults">
-          <div className="grid gap-3">
+          <div className="grid gap-2">
             <SettingToggle
               icon={Mail}
               label="Email Reminders"
@@ -1486,7 +1486,7 @@ function SettingsPanel({
         </Panel>
 
         <Panel title="Reminder Schedule" action="Booking Window">
-          <div className="grid gap-3">
+          <div className="grid gap-2">
             <SettingToggle
               icon={CalendarDays}
               label="7 Days Before Booking Opens"
@@ -1515,7 +1515,7 @@ function SettingsPanel({
             Enable Email or Discord reminders to configure delivery settings.
           </div>
         )}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-3 lg:grid-cols-2">
           {settings.reminderEmailEnabled && (
             <>
               <label className="grid gap-2 text-sm font-medium text-slate-700">
@@ -1556,7 +1556,7 @@ function SettingsPanel({
       </Panel>
 
       <Panel title="Users" action={`${users.length} Total`}>
-        <form action={createUser} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+        <form action={createUser} className="mb-3 grid gap-3 rounded-lg border border-slate-200 bg-white p-3">
           <div className="grid gap-3 sm:grid-cols-[1fr_1.2fr_0.7fr_auto]">
             <input name="name" placeholder="Name" className="h-10 rounded-md border border-slate-300 px-3" />
             <input required name="email" type="email" placeholder="Email" className="h-10 rounded-md border border-slate-300 px-3" />
@@ -1570,9 +1570,9 @@ function SettingsPanel({
           </div>
         </form>
 
-        <div className="space-y-3">
+        <div className="space-y-2">
           {users.map((user) => (
-            <div key={user.id} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+            <div key={user.id} className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
                 <p className="text-sm font-semibold text-slate-950">{user.name || user.email}</p>
                 <p className="text-sm text-slate-600">{user.email}</p>
@@ -1761,7 +1761,7 @@ function HolidayPanel({
         )}
 
         {showAddForm && (
-          <form action={submitHoliday} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+          <form action={submitHoliday} className="mb-3 grid gap-3 rounded-lg border border-slate-200 bg-white p-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Name
@@ -1792,7 +1792,7 @@ function HolidayPanel({
         )}
 
         {showIcsForm && (
-          <form action={syncIcs} className="mb-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4">
+          <form action={syncIcs} className="mb-3 grid gap-3 rounded-lg border border-slate-200 bg-white p-3">
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               ICS URL
               <input name="icsUrl" type="url" placeholder="https://example.com/calendar.ics" className="h-10 rounded-md border border-slate-300 bg-white px-3 text-slate-950" />
@@ -1815,7 +1815,7 @@ function HolidayPanel({
 
         <div className="max-h-[34rem] space-y-2 overflow-y-auto">
           {holidays.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm font-medium text-slate-600">
+            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
               No holidays yet. Add one manually, import a CSV, or sync an ICS calendar.
             </div>
           )}
@@ -1885,19 +1885,19 @@ function AnalyticsPanel({
   const upcomingTickets = journeys.filter((journey) => !["CANCELLED", "COMPLETED"].includes(journey.status)).length;
 
   return (
-    <section className="grid gap-5">
-      <div className="grid gap-3 md:grid-cols-4">
+    <section className="grid gap-3">
+      <div className="grid gap-2.5 md:grid-cols-4">
         <MetricCard icon={Train} label="Upcoming tickets" value={upcomingTickets.toString()} tone="slate" />
         <MetricCard icon={Clock} label="Tickets to Book" value={ticketsToBook.toString()} tone="amber" />
         <MetricCard icon={CalendarDays} label="Booked Tickets" value={bookedTickets.toString()} tone="green" />
         <MetricCard icon={MapPin} label="Routes Used" value={mostUsedRoutes.length.toString()} tone="slate" />
       </div>
       {journeys.length === 0 && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-sm font-medium text-slate-600">
+        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-600">
           No analytics yet. Add tickets to build route and monthly booking views.
         </div>
       )}
-      <div className="grid gap-5">
+      <div className="grid gap-3">
         <Panel title="Tickets per Month" action="Trend">
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -1915,7 +1915,7 @@ function AnalyticsPanel({
       <Panel title="Most Used Routes" action="History">
         <div className="grid gap-3 md:grid-cols-3">
           {mostUsedRoutes.map((item) => (
-            <div key={item.route} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div key={item.route} className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="text-sm font-semibold text-slate-950">{item.route}</p>
               <p className="mt-2 text-2xl font-semibold text-slate-950">{item.count}</p>
             </div>
@@ -1928,10 +1928,10 @@ function AnalyticsPanel({
 
 function Panel({ title, action, children }: { title: string; action?: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <section className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+      <div className="mb-2.5 flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-        {action && <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{action}</span>}
+        {action && <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{action}</span>}
       </div>
       {children}
     </section>
@@ -1946,23 +1946,23 @@ function MetricCard({ icon: Icon, label, value, tone }: { icon: LucideIcon; labe
     slate: "border-slate-200 bg-white text-slate-800",
   };
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <div className="flex items-center justify-between">
-        <div className={cn("grid h-9 w-9 place-items-center rounded-md border", tones[tone])}>
-          <Icon className="h-5 w-5" aria-hidden />
-        </div>
+    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-2.5">
+      <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-md border", tones[tone])}>
+        <Icon className="h-5 w-5" aria-hidden />
       </div>
-      <p className="mt-3 text-sm font-medium text-slate-600">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-slate-950">{value}</p>
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-slate-600">{label}</p>
+        <p className="mt-0.5 text-xl font-semibold text-slate-950">{value}</p>
+      </div>
     </div>
   );
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-white px-2.5 py-1.5">
-      <p className="text-xs font-medium uppercase text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-950">{value}</p>
+    <div className="rounded-md bg-white px-2 py-1">
+      <p className="text-[11px] font-medium uppercase text-slate-500">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold text-slate-950">{value}</p>
     </div>
   );
 }
@@ -1985,7 +1985,7 @@ function NotificationMenu({
       <button
         type="button"
         onClick={onToggle}
-        className="relative grid h-11 w-11 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
+        className="relative grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
         aria-label="Open reminders"
         title="Reminders"
       >
