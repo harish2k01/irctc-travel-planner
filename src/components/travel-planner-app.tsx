@@ -529,7 +529,7 @@ export function TravelPlannerApp({
                     {activeTabDetails.label}
                   </h1>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-stretch gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
                   <NotificationMenu
                     open={notificationsOpen}
                     actions={inAppReminderActions}
@@ -540,7 +540,7 @@ export function TravelPlannerApp({
                       setNotificationsOpen(false);
                     }}
                   />
-                  <div className="grid grid-cols-3 gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-1 text-center text-sm sm:min-w-[300px]">
+                  <div className="grid grid-cols-3 gap-1 text-center text-sm sm:min-w-[300px]">
                     <MiniMetric label="Next 30 Days" value={upcomingJourneys.length.toString()} />
                     <MiniMetric label="Pending" value={pendingBookings.length.toString()} />
                     <MiniMetric label="Booked" value={confirmedBookings.length.toString()} />
@@ -879,10 +879,10 @@ function ReminderChannelFields({
         {channels.map((channel) => {
           const Icon = channel.icon;
           return (
-            <label key={channel.key} className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+            <label key={channel.key} className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
               <span className="inline-flex items-center gap-2">
                 <Icon className="h-4 w-4 text-slate-500" aria-hidden />
-                {channel.label}
+                <span className="whitespace-nowrap">{channel.label}</span>
               </span>
               <input
                 name={channel.key}
@@ -1262,10 +1262,12 @@ function TicketTable({
         {journeys.map((journey) => (
           <tr key={journey.id} className="align-top hover:bg-slate-50">
             <td className="px-3 py-2.5">
-              <button type="button" onClick={() => onOpen(journey.id)} className="text-left font-semibold text-slate-950 hover:text-blue-700">
-                {journeyRouteLabel(journey, routeById.get(journey.routeId))}
-              </button>
-              <StatusPill journey={journey} today={today} />
+              <div className="flex min-w-0 flex-col items-start gap-1">
+                <button type="button" onClick={() => onOpen(journey.id)} className="text-left font-semibold text-slate-950 hover:text-blue-700">
+                  {journeyRouteLabel(journey, routeById.get(journey.routeId))}
+                </button>
+                <StatusPill journey={journey} today={today} />
+              </div>
             </td>
             <td className="px-3 py-2.5 font-medium text-slate-800">{formatDate(journey.travelDate)}</td>
             <td className="px-3 py-2.5 font-medium text-slate-800">{formatDate(journey.bookingOpenDate)}</td>
@@ -1319,7 +1321,7 @@ function TicketTable({
 
 function CalendarPanel({ events, onOpenJourney }: { events: CalendarEvent[]; onOpenJourney: (id: string) => void }) {
   return (
-    <Panel title="Calendar" action="Month, Week, Agenda">
+    <Panel title="Tickets & Booking Windows" action="Month, Week, Agenda">
       <div className="calendar-shell rounded-lg border border-slate-200 bg-white p-2">
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
@@ -1980,12 +1982,43 @@ function NotificationMenu({
   onClose: () => void;
   onOpenTicket: (id: string) => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        onClose();
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose]);
+
   return (
-    <div className="relative">
+    <div ref={menuRef} className="relative">
       <button
         type="button"
         onClick={onToggle}
-        className="relative grid h-9 w-9 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"
+        className={cn(
+          "relative grid h-full min-h-10 w-10 place-items-center rounded-md bg-white text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950",
+          open && "bg-slate-100 text-slate-950",
+        )}
         aria-label="Open reminders"
         title="Reminders"
       >
