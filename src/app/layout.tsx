@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "IRCTC Travel Planner",
-  description: "Calendar-first planner for recurring Indian train office commutes.",
+  description: "Self-hosted Indian Railways ticket planning, booking reminders, and PNR tracking.",
   icons: {
     icon: "/icon.svg",
   },

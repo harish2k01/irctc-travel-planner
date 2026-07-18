@@ -1,30 +1,41 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
-      POSTGRES_USER: commuterail
+      POSTGRES_USER: irctc
       POSTGRES_PASSWORD: change-me
-      POSTGRES_DB: commuterail
+      POSTGRES_DB: irctc
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U commuterail -d commuterail"]
-      interval: 10s
+      test: [CMD-SHELL, pg_isready -U irctc -d irctc]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 20
 
-  app:
+  migrate:
     build: .
-    environment:
-      DATABASE_URL: postgresql://commuterail:change-me@postgres:5432/commuterail?schema=public
+    command: [npm, run, prisma:migrate:deploy]
+    environment: &app-environment
+      DATABASE_URL: postgresql://irctc:change-me@postgres:5432/irctc?schema=public
       NEXT_PUBLIC_APP_URL: http://localhost:3000
-    ports:
-      - "3000:3000"
+      APP_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      RATE_LIMIT_SALT: local-development-salt
+      CRON_SECRET: local-development-worker-secret
     depends_on:
       postgres:
         condition: service_healthy
+
+  app:
+    build: .
+    environment: *app-environment
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres-data:

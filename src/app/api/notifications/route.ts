@@ -1,64 +1,58 @@
-import { NextResponse } from "next/server";
+import { z } from "zod";
 import { requireUser } from "@/lib/auth";
-import { buildJourneyReminders } from "@/lib/dates";
 import { prisma } from "@/lib/db";
-import { getAppSettings } from "@/lib/settings";
-import type { Journey } from "@/lib/types";
+import { assertSameOrigin, jsonData, noStoreHeaders, parseJson, routeError } from "@/lib/http";
+import type { NotificationItem } from "@/lib/types";
 
-function dateOnly(value: Date) {
-  return value.toISOString().slice(0, 10);
+const updateSchema = z.object({
+  ids: z.array(z.string().min(1)).max(100).optional(),
+  all: z.boolean().optional(),
+}).refine((value) => value.all || value.ids?.length, "Select one or more notifications.");
+
+export async function GET(request: Request) {
+  try {
+    const user = await requireUser();
+    const rows = await prisma.reminderDelivery.findMany({
+      where: { userId: user.id, channel: "IN_APP", status: { in: ["SENT", "READ"] } },
+      include: { schedule: { include: { ticket: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    const data: NotificationItem[] = rows.map((row) => ({
+      id: row.id,
+      ticketId: row.schedule.ticketId,
+      route: `${row.schedule.ticket.sourceCode} to ${row.schedule.ticket.destinationCode}`,
+      type: row.schedule.type,
+      dueAt: row.schedule.dueAt.toISOString(),
+      travelDate: row.schedule.ticket.travelDate.toISOString().slice(0, 10),
+      bookingOpensAt: row.schedule.ticket.bookingOpensAt.toISOString(),
+      readAt: row.readAt?.toISOString(),
+    }));
+    return Response.json(
+      { data, unreadCount: data.filter((item) => !item.readAt).length },
+      { headers: noStoreHeaders() },
+    );
+  } catch (error) {
+    return routeError(error, request);
+  }
 }
 
-export async function GET() {
-  const user = await requireUser();
-  const [journeys, settings] = await Promise.all([
-    prisma.journey.findMany({ where: { userId: user.id, remindersEnabled: true } }),
-    getAppSettings(),
-  ]);
-  const reminders = journeys.flatMap((journey): ReturnType<typeof buildJourneyReminders> => {
-    const hasEnabledChannel =
-      (settings.reminderEmailEnabled && journey.reminderEmailEnabled) ||
-      (settings.reminderDiscordEnabled && journey.reminderDiscordEnabled) ||
-      (settings.reminderInAppEnabled && journey.reminderInAppEnabled);
-
-    if (!hasEnabledChannel) {
-      return [];
-    }
-
-    const item: Journey = {
-      id: journey.id,
-      routeId: journey.routeId,
-      trainId: journey.trainId,
-      travelDate: dateOnly(journey.travelDate),
-      bookingOpenDate: dateOnly(journey.bookingOpenDate),
-      preferredClass: journey.preferredClass,
-      sourceCode: journey.sourceCode ?? undefined,
-      sourceName: journey.sourceName ?? undefined,
-      destinationCode: journey.destinationCode ?? undefined,
-      destinationName: journey.destinationName ?? undefined,
-      status: journey.status,
-      remindersEnabled: journey.remindersEnabled,
-      reminderEmailEnabled: journey.reminderEmailEnabled,
-      reminderDiscordEnabled: journey.reminderDiscordEnabled,
-      reminderInAppEnabled: journey.reminderInAppEnabled,
-    };
-
-    return buildJourneyReminders(item);
-  }).filter((reminder) => {
-    if (reminder.type === "SEVEN_DAYS_BEFORE") return settings.reminderSevenDaysEnabled;
-    if (reminder.type === "ONE_DAY_BEFORE") return settings.reminderOneDayEnabled;
-    return settings.reminderBookingOpenEnabled;
-  });
-
-  return NextResponse.json({
-    data: {
-      preferences: [
-        { channel: "EMAIL", enabled: settings.reminderEmailEnabled },
-        { channel: "DISCORD", enabled: settings.reminderDiscordEnabled },
-        { channel: "IN_APP", enabled: settings.reminderInAppEnabled },
-      ],
-      reminders,
-      queued: reminders.filter((reminder) => reminder.dueDate >= dateOnly(new Date())),
-    },
-  });
+export async function PATCH(request: Request) {
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    const input = await parseJson(request, updateSchema);
+    await prisma.reminderDelivery.updateMany({
+      where: {
+        userId: user.id,
+        channel: "IN_APP",
+        ...(input.all ? {} : { id: { in: input.ids } }),
+        status: "SENT",
+      },
+      data: { status: "READ", readAt: new Date() },
+    });
+    return jsonData({ ok: true });
+  } catch (error) {
+    return routeError(error, request);
+  }
 }

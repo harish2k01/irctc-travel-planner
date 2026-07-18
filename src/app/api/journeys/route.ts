@@ -1,173 +1,97 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { createJourneySchema, normalizeJourneyInput } from "@/lib/api-schemas";
+import { createTicketSchema } from "@/lib/api-schemas";
+import { writeAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { buildJourneyReminders } from "@/lib/dates";
+import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { ApiError, assertSameOrigin, noStoreHeaders, parseJson, routeError } from "@/lib/http";
+import { syncTicketPnr } from "@/lib/pnr-sync";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getAppSettings } from "@/lib/settings";
+import { serializeTicket, syncReminderSchedules, ticketBookingInstant } from "@/lib/tickets";
 
-function hasDatabase() {
-  return Boolean(process.env.DATABASE_URL);
-}
+export async function GET(request: Request) {
+  try {
+    const user = await requireUser();
+    const url = new URL(request.url);
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+    const status = url.searchParams.get("status");
+    if (status && !["PLANNED", "BOOKED", "ARCHIVED"].includes(status)) {
+      throw new ApiError(400, "Unknown ticket status.", "VALIDATION_ERROR");
+    }
 
-function toDate(dateOnly: string) {
-  return new Date(`${dateOnly}T00:00:00.000Z`);
-}
-
-export async function GET() {
-  if (!hasDatabase()) {
-    return NextResponse.json({ data: [], source: "empty" });
+    const rows = await prisma.ticketPlan.findMany({
+      where: { userId: user.id, ...(status ? { status: status as "PLANNED" | "BOOKED" | "ARCHIVED" } : {}) },
+      include: { pnrSnapshot: true },
+      orderBy: [{ travelDate: "asc" }, { id: "asc" }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > limit;
+    const data = rows.slice(0, limit).map(serializeTicket);
+    return NextResponse.json(
+      { data, pagination: { nextCursor: hasMore ? data.at(-1)?.id : null, hasMore } },
+      { headers: noStoreHeaders() },
+    );
+  } catch (error) {
+    return routeError(error, request);
   }
-
-  const user = await requireUser();
-  const data = await prisma.journey.findMany({
-    where: { userId: user.id },
-    include: { route: true, train: true, reminders: true, attachments: true },
-    orderBy: { travelDate: "asc" },
-  });
-
-  return NextResponse.json({ data, source: "database" });
 }
 
 export async function POST(request: Request) {
-  const user = await requireUser();
-  const parsed = createJourneySchema.safeParse(await request.json());
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
-
-  if (!hasDatabase()) {
-    const normalized = normalizeJourneyInput(parsed.data);
-    const journey = {
-      id: `draft-${Date.now()}`,
-      ...normalized,
-      routeId: normalized.routeId ?? "preview-route",
-      trainId: normalized.trainId ?? normalized.trainNumber ?? "preview-train",
-    };
-
-    return NextResponse.json(
-      {
-        data: journey,
-        reminders: buildJourneyReminders(journey),
-        source: "preview",
-      },
-      { status: 201 },
-    );
-  }
-
-  const normalized = normalizeJourneyInput(parsed.data);
-
-  const data = await prisma.$transaction(async (tx) => {
-    let routeId = normalized.routeId;
-    let trainId = normalized.trainId;
-
-    if (trainId) {
-      const existingTrain = await tx.train.findFirst({
-        where: {
-          id: trainId,
-          route: { userId: user.id },
-        },
-        include: { route: true },
-      });
-
-      if (!existingTrain) {
-        return null;
-      }
-
-      routeId = existingTrain.routeId;
-    } else {
-      const sourceCode = normalized.sourceCode?.trim().toUpperCase();
-      const destinationCode = normalized.destinationCode?.trim().toUpperCase();
-      const trainNumber = normalized.trainNumber?.trim() || `${sourceCode}-${destinationCode}`;
-      const trainName = normalized.trainName?.trim() || "Manual ticket";
-
-      if (!sourceCode || !destinationCode) {
-        return null;
-      }
-
-      const route =
-        (await tx.route.findFirst({
-          where: {
-            userId: user.id,
-            originCode: sourceCode,
-            destinationCode,
-          },
-        })) ??
-        (await tx.route.create({
-          data: {
-            userId: user.id,
-            originCode: sourceCode,
-            originName: normalized.sourceName?.trim() || sourceCode,
-            destinationCode,
-            destinationName: normalized.destinationName?.trim() || destinationCode,
-          },
-        }));
-
-      routeId = route.id;
-
-      const train =
-        (await tx.train.findFirst({
-          where: {
-            routeId,
-            trainNumber,
-          },
-        })) ??
-        (await tx.train.create({
-          data: {
-            routeId,
-            trainNumber,
-            trainName,
-            preferredClasses: [normalized.preferredClass],
-          },
-        }));
-
-      trainId = train.id;
-    }
-
-    const journey = await tx.journey.create({
-      data: {
-        userId: user.id,
-        routeId,
-        trainId,
-        travelDate: toDate(normalized.travelDate),
-        bookingOpenDate: toDate(normalized.bookingOpenDate),
-        preferredClass: normalized.preferredClass,
-        sourceCode: normalized.sourceCode,
-        sourceName: normalized.sourceName,
-        destinationCode: normalized.destinationCode,
-        destinationName: normalized.destinationName,
-        direction: normalized.direction,
-        recurrence: normalized.recurrence,
-        status: normalized.status,
-        notes: normalized.notes,
-        pnr: normalized.pnr,
-        remindersEnabled: normalized.remindersEnabled ?? true,
-        reminderEmailEnabled: normalized.reminderEmailEnabled ?? true,
-        reminderDiscordEnabled: normalized.reminderDiscordEnabled ?? false,
-        reminderInAppEnabled: normalized.reminderInAppEnabled ?? true,
-      },
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    await enforceRateLimit(request, "ticket:create", 30, 60_000, user.id);
+    const input = await parseJson(request, createTicketSchema);
+    const settings = await getAppSettings();
+    const pnr = typeof input.pnr === "string" && input.pnr ? input.pnr : undefined;
+    const bookingOpensAt = ticketBookingInstant({
+      travelDate: input.travelDate,
+      bookingWindowDays: settings.bookingWindowDays,
+      bookingOpenHour: settings.bookingOpenHour,
+      bookingOpenMinute: settings.bookingOpenMinute,
+      timeZone: user.timeZone,
     });
 
-    if (journey.remindersEnabled && (journey.reminderEmailEnabled || journey.reminderDiscordEnabled || journey.reminderInAppEnabled)) {
-      await tx.journeyReminder.createMany({
-        data: buildJourneyReminders({
-          ...normalized,
-          id: journey.id,
-          routeId,
-          trainId,
-        }).map((reminder) => ({
-          journeyId: journey.id,
-          type: reminder.type,
-          dueAt: toDate(reminder.dueDate),
-        })),
+    const ticket = await prisma.$transaction(async (tx) => {
+      const created = await tx.ticketPlan.create({
+        data: {
+          id: randomUUID(),
+          userId: user.id,
+          sourceCode: input.sourceCode,
+          sourceName: input.sourceName,
+          destinationCode: input.destinationCode,
+          destinationName: input.destinationName,
+          travelDate: new Date(`${input.travelDate}T00:00:00.000Z`),
+          bookingOpensAt,
+          notes: input.notes,
+          pnrEncrypted: pnr ? encryptSecret(pnr) : undefined,
+          pnrLast4: pnr?.slice(-4),
+          status: pnr ? "BOOKED" : "PLANNED",
+          reminderEmailEnabled: settings.reminderEmailEnabled && (input.reminderEmailEnabled ?? settings.reminderEmailEnabled),
+          reminderDiscordEnabled: settings.reminderDiscordEnabled && (input.reminderDiscordEnabled ?? settings.reminderDiscordEnabled),
+          reminderInAppEnabled: settings.reminderInAppEnabled && (input.reminderInAppEnabled ?? settings.reminderInAppEnabled),
+        },
       });
+      await syncReminderSchedules(tx, created, settings);
+      return created;
+    });
+
+    let warning: string | undefined;
+    if (pnr && process.env.PNR_PROVIDER_URL) {
+      try {
+        await syncTicketPnr(ticket.id, user.id);
+      } catch {
+        warning = "The ticket was saved, but PNR details could not be synced yet.";
+      }
     }
-
-    return journey;
-  });
-
-  if (!data) {
-    return NextResponse.json({ error: "Train and route details are required." }, { status: 400 });
+    const saved = await prisma.ticketPlan.findUniqueOrThrow({ where: { id: ticket.id }, include: { pnrSnapshot: true } });
+    await writeAudit({ actorId: user.id, action: "ticket.created", targetType: "TicketPlan", targetId: ticket.id, request });
+    return NextResponse.json({ data: serializeTicket(saved), warning }, { status: 201 });
+  } catch (error) {
+    return routeError(error, request);
   }
-
-  return NextResponse.json({ data, source: "database" }, { status: 201 });
 }

@@ -1,48 +1,37 @@
-name: Build Image
+name: Pull Request Checks
 
 on:
   pull_request:
-    branches:
-      - main
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - package.json
-      - package-lock.json
-      - next.config.ts
-      - postcss.config.mjs
-      - prisma.config.ts
-      - prisma/**
-      - public/**
-      - src/**
-      - tsconfig.json
-      - .github/workflows/build.yaml
-      - .github/workflows/release.yaml
+    branches: [main]
 
 permissions:
   contents: read
 
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build pull request image
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run prisma:generate
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:coverage
+      - run: npm run build
+      - uses: docker/setup-buildx-action@v3
+      - name: Build container
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
           push: false
-          provenance: false
-          sbom: false
-          build-args: |
-            APP_VERSION=pr-${{ github.event.pull_request.number }}
+          build-args: APP_VERSION=pr-${{ github.event.pull_request.number }}
           tags: ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.description=Smart IRCTC travel planner

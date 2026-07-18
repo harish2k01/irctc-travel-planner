@@ -1,53 +1,35 @@
-import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { createHolidaySchema } from "@/lib/api-schemas";
+import { writeAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { assertSameOrigin, noStoreHeaders, parseJson, routeError } from "@/lib/http";
 
-function hasDatabase() {
-  return Boolean(process.env.DATABASE_URL);
+function serializeHoliday(value: { id: string; name: string; date: Date; type: "COMPANY" | "PERSONAL_LEAVE" }) {
+  return { id: value.id, name: value.name, date: value.date.toISOString().slice(0, 10), type: value.type };
 }
 
-function toDate(dateOnly: string) {
-  return new Date(`${dateOnly}T00:00:00.000Z`);
-}
-
-export async function GET() {
-  if (!hasDatabase()) {
-    return NextResponse.json({ data: [], source: "empty" });
+export async function GET(request: Request) {
+  try {
+    const user = await requireUser();
+    const rows = await prisma.holiday.findMany({ where: { userId: user.id }, orderBy: { date: "asc" }, take: 500 });
+    return Response.json({ data: rows.map(serializeHoliday) }, { headers: noStoreHeaders() });
+  } catch (error) {
+    return routeError(error, request);
   }
-
-  const user = await requireUser();
-  const data = await prisma.holiday.findMany({
-    where: { userId: user.id },
-    orderBy: { date: "asc" },
-  });
-
-  return NextResponse.json({ data, source: "database" });
 }
 
 export async function POST(request: Request) {
-  const user = await requireUser();
-  const parsed = createHolidaySchema.safeParse(await request.json());
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    const input = await parseJson(request, createHolidaySchema);
+    const holiday = await prisma.holiday.create({
+      data: { id: randomUUID(), userId: user.id, name: input.name, date: new Date(`${input.date}T00:00:00.000Z`), type: input.type },
+    });
+    await writeAudit({ actorId: user.id, action: "holiday.created", targetType: "Holiday", targetId: holiday.id, request });
+    return Response.json({ data: serializeHoliday(holiday) }, { status: 201 });
+  } catch (error) {
+    return routeError(error, request);
   }
-
-  if (!hasDatabase()) {
-    return NextResponse.json(
-      { data: { id: `holiday-${Date.now()}`, ...parsed.data }, source: "preview" },
-      { status: 201 },
-    );
-  }
-
-  const data = await prisma.holiday.create({
-    data: {
-      userId: user.id,
-      name: parsed.data.name,
-      date: toDate(parsed.data.date),
-      type: parsed.data.type,
-    },
-  });
-
-  return NextResponse.json({ data, source: "database" }, { status: 201 });
 }

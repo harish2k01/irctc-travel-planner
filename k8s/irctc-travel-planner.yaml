@@ -4,6 +4,13 @@ metadata:
   name: irctc-travel-planner
 ---
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: irctc-travel-planner
+  namespace: irctc-travel-planner
+automountServiceAccountToken: false
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: irctc-travel-planner-config
@@ -11,7 +18,6 @@ metadata:
 data:
   NEXT_PUBLIC_APP_URL: https://irctc-travel-planner.k8s.harish2k01.xyz
   EMAIL_FROM: IRCTC Travel Planner <noreply@example.com>
-  OBJECT_STORAGE_BUCKET: irctc-travel-planner-attachments
   PNR_PROVIDER_URL: ""
 ---
 apiVersion: v1
@@ -20,145 +26,185 @@ metadata:
   name: irctc-travel-planner-postgres-data
   namespace: irctc-travel-planner
 spec:
-  accessModes:
-    - ReadWriteOnce
+  accessModes: [ReadWriteOnce]
   resources:
     requests:
       storage: 1Gi
 ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: irctc-travel-planner-postgres-backups
+  namespace: irctc-travel-planner
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: irctc-travel-planner-postgres
   namespace: irctc-travel-planner
 spec:
+  serviceName: irctc-travel-planner-postgres
   replicas: 1
   selector:
     matchLabels:
-      app: irctc-travel-planner-postgres
+      app.kubernetes.io/name: irctc-travel-planner
+      app.kubernetes.io/component: database
   template:
     metadata:
       labels:
-        app: irctc-travel-planner-postgres
+        app.kubernetes.io/name: irctc-travel-planner
+        app.kubernetes.io/component: database
     spec:
+      serviceAccountName: irctc-travel-planner
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: postgres
           image: postgres:18-alpine
           ports:
-            - containerPort: 5432
+            - name: postgres
+              containerPort: 5432
           envFrom:
             - secretRef:
                 name: irctc-travel-planner-secrets
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            exec:
+              command: [pg_isready, -U, irctc, -d, irctc]
+            failureThreshold: 30
+            periodSeconds: 2
           readinessProbe:
             exec:
-              command:
-                - pg_isready
-                - -U
-                - irctc
-                - -d
-                - irctc
-            initialDelaySeconds: 5
+              command: [pg_isready, -U, irctc, -d, irctc]
             periodSeconds: 5
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: irctc-travel-planner-postgres-data
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: irctc-travel-planner-postgres
-  namespace: irctc-travel-planner
-spec:
-  selector:
-    app: irctc-travel-planner-postgres
-  ports:
-    - name: postgres
-      port: 5432
-      targetPort: 5432
----
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: irctc-travel-planner-db-setup
-  namespace: irctc-travel-planner
-spec:
-  backoffLimit: 3
-  template:
-    spec:
-      restartPolicy: OnFailure
-      initContainers:
-        - name: wait-for-postgres
-          image: postgres:18-alpine
-          envFrom:
-            - secretRef:
-                name: irctc-travel-planner-secrets
-          command:
-            - sh
-            - -c
-            - until pg_isready -h irctc-travel-planner-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do sleep 2; done
-      containers:
-        - name: db-setup
-          image: ghcr.io/harish2k01/irctc-travel-planner:latest
-          imagePullPolicy: Always
-          envFrom:
-            - secretRef:
-                name: irctc-travel-planner-secrets
-            - configMapRef:
-                name: irctc-travel-planner-config
-          command:
-            - sh
-            - -c
-            - npx prisma db push && npm run prisma:seed
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: irctc-travel-planner-web
-  namespace: irctc-travel-planner
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: irctc-travel-planner-web
-  template:
-    metadata:
-      labels:
-        app: irctc-travel-planner-web
-    spec:
-      containers:
-        - name: web
-          image: ghcr.io/harish2k01/irctc-travel-planner:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 3000
-          envFrom:
-            - secretRef:
-                name: irctc-travel-planner-secrets
-            - configMapRef:
-                name: irctc-travel-planner-config
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 3000
-            initialDelaySeconds: 10
-            periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /
-              port: 3000
-            initialDelaySeconds: 30
+            exec:
+              command: [pg_isready, -U, irctc, -d, irctc]
             periodSeconds: 20
           resources:
             requests:
               cpu: 100m
               memory: 256Mi
             limits:
-              cpu: 500m
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: irctc-travel-planner-postgres-data
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: irctc-travel-planner-postgres
+  namespace: irctc-travel-planner
+spec:
+  selector:
+    app.kubernetes.io/name: irctc-travel-planner
+    app.kubernetes.io/component: database
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: irctc-travel-planner-web
+  namespace: irctc-travel-planner
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: irctc-travel-planner
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: irctc-travel-planner
+        app.kubernetes.io/component: web
+    spec:
+      serviceAccountName: irctc-travel-planner
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: ghcr.io/harish2k01/irctc-travel-planner:0.12.0
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: irctc-travel-planner-secrets
+            - configMapRef:
+                name: irctc-travel-planner-config
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          startupProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /api/health/ready
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health/live
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 750m
               memory: 768Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
@@ -167,11 +213,328 @@ metadata:
   namespace: irctc-travel-planner
 spec:
   selector:
-    app: irctc-travel-planner-web
+    app.kubernetes.io/name: irctc-travel-planner
+    app.kubernetes.io/component: web
   ports:
     - name: http
       port: 80
-      targetPort: 3000
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: irctc-travel-planner-web
+  namespace: irctc-travel-planner
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: irctc-travel-planner
+      app.kubernetes.io/component: web
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: irctc-travel-planner-web
+  namespace: irctc-travel-planner
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: irctc-travel-planner-web
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: irctc-travel-planner-db-migrate
+  namespace: irctc-travel-planner
+spec:
+  schedule: "0 0 31 2 *"
+  suspend: true
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: irctc-travel-planner
+            app.kubernetes.io/component: worker
+        spec:
+          serviceAccountName: irctc-travel-planner
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: migrate
+              image: ghcr.io/harish2k01/irctc-travel-planner:0.12.0
+              imagePullPolicy: Always
+              command: [npm, run, prisma:migrate:deploy]
+              envFrom:
+                - secretRef:
+                    name: irctc-travel-planner-secrets
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: irctc-travel-planner-reminders
+  namespace: irctc-travel-planner
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 300
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: irctc-travel-planner
+            app.kubernetes.io/component: worker
+        spec:
+          serviceAccountName: irctc-travel-planner
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: trigger
+              image: alpine:3.23
+              command: [sh, -c, 'wget -qO- --header="Authorization: Bearer ${CRON_SECRET}" --post-data="" http://irctc-travel-planner-web/api/internal/reminders/process']
+              envFrom:
+                - secretRef:
+                    name: irctc-travel-planner-secrets
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: irctc-travel-planner-pnr-sync
+  namespace: irctc-travel-planner
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: irctc-travel-planner
+            app.kubernetes.io/component: worker
+        spec:
+          serviceAccountName: irctc-travel-planner
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            runAsGroup: 65534
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: trigger
+              image: alpine:3.23
+              command: [sh, -c, 'wget -qO- --header="Authorization: Bearer ${CRON_SECRET}" --post-data="" http://irctc-travel-planner-web/api/internal/pnr-sync']
+              envFrom:
+                - secretRef:
+                    name: irctc-travel-planner-secrets
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: [ALL]
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: irctc-travel-planner-postgres-backup
+  namespace: irctc-travel-planner
+spec:
+  schedule: "30 1 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: irctc-travel-planner
+            app.kubernetes.io/component: worker
+        spec:
+          serviceAccountName: irctc-travel-planner
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            fsGroup: 70
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: backup
+              image: postgres:18-alpine
+              envFrom:
+                - secretRef:
+                    name: irctc-travel-planner-secrets
+              command: [sh, -c, 'set -eu; pg_dump -h irctc-travel-planner-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "/backups/irctc-$(date +%Y%m%d-%H%M%S).dump"; find /backups -type f -mtime +14 -delete']
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: [ALL]
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: irctc-travel-planner-postgres-backups
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: irctc-travel-planner-default-deny
+  namespace: irctc-travel-planner
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: irctc-travel-planner-web
+  namespace: irctc-travel-planner
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: irctc-travel-planner
+      app.kubernetes.io/component: web
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: worker
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 465
+        - protocol: TCP
+          port: 587
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: irctc-travel-planner-workers
+  namespace: irctc-travel-planner
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: irctc-travel-planner
+      app.kubernetes.io/component: worker
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: web
+      ports:
+        - protocol: TCP
+          port: 3000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: irctc-travel-planner-database
+  namespace: irctc-travel-planner
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: irctc-travel-planner
+      app.kubernetes.io/component: database
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values: [web, worker]
+      ports:
+        - protocol: TCP
+          port: 5432
+  egress:
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

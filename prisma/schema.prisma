@@ -6,26 +6,12 @@ datasource db {
   provider = "postgresql"
 }
 
-enum JourneyStatus {
+enum TicketStatus {
   PLANNED
-  BOOKING_WINDOW_OPEN
   BOOKED
-  WAITLISTED
-  RAC
-  CONFIRMED
-  CANCELLED
-  COMPLETED
-}
+  ARCHIVED
 
-enum TravelDirection {
-  HOME_TO_OFFICE
-  OFFICE_TO_HOME
-}
-
-enum RecurrenceType {
-  ONE_TIME
-  WEEKLY
-  CUSTOM
+  @@map("JourneyStatus")
 }
 
 enum ReminderType {
@@ -35,21 +21,19 @@ enum ReminderType {
 }
 
 enum HolidayType {
-  NATIONAL
-  STATE
   COMPANY
   PERSONAL_LEAVE
 }
 
 enum NotificationChannel {
   EMAIL
-  PUSH
   DISCORD
   IN_APP
 }
 
-enum NotificationStatus {
-  QUEUED
+enum DeliveryStatus {
+  PENDING
+  SENDING
   SENT
   FAILED
   READ
@@ -60,36 +44,69 @@ enum UserRole {
   USER
 }
 
+enum AccountTokenType {
+  INVITATION
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+}
+
 model User {
-  id           String         @id @default(cuid())
-  email        String         @unique
-  name         String?
-  passwordHash String?
-  role         UserRole       @default(USER)
-  isActive     Boolean        @default(true)
-  mustResetPassword Boolean   @default(false)
-  googleId     String?        @unique
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  routes       Route[]
-  journeys     Journey[]
-  holidays     Holiday[]
-  leaves       LeaveRequest[]
-  notifications Notification[]
-  attachments  Attachment[]
-  sessions     Session[]
+  id                 String             @id @default(cuid())
+  email              String             @unique
+  name               String?
+  passwordHash       String?
+  role               UserRole           @default(USER)
+  isActive           Boolean            @default(true)
+  mustResetPassword  Boolean            @default(false)
+  emailVerifiedAt    DateTime?
+  timeZone           String             @default("Asia/Kolkata")
+  weekendDays        Int[]              @default([0, 6])
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  tickets            TicketPlan[]
+  holidays           Holiday[]
+  sessions           Session[]
+  accountTokens      AccountToken[]
+  reminderDeliveries ReminderDelivery[]
+  auditEvents        AuditLog[]         @relation("AuditActor")
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  ipHash     String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model AccountToken {
+  id        String           @id @default(cuid())
+  userId    String
+  type      AccountTokenType
+  tokenHash String           @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([expiresAt])
+}
+
+model RateLimitBucket {
+  key       String   @id
+  count     Int      @default(0)
+  resetAt   DateTime
+  updatedAt DateTime @updatedAt
+
+  @@index([resetAt])
 }
 
 model AppSettings {
@@ -101,6 +118,11 @@ model AppSettings {
   reminderSevenDaysEnabled   Boolean  @default(true)
   reminderOneDayEnabled      Boolean  @default(true)
   reminderBookingOpenEnabled Boolean  @default(true)
+  bookingWindowDays          Int      @default(60)
+  bookingOpenHour            Int      @default(8)
+  bookingOpenMinute          Int      @default(0)
+  pnrAutoSyncEnabled         Boolean  @default(false)
+  pnrSyncIntervalMinutes     Int      @default(360)
   smtpUrl                    String?
   emailFrom                  String?
   discordWebhookUrl          String?
@@ -108,142 +130,116 @@ model AppSettings {
   updatedAt                  DateTime @updatedAt
 }
 
-model Route {
-  id              String    @id @default(cuid())
-  userId          String
-  originCode      String
-  originName      String
-  destinationCode String
-  destinationName String
-  createdAt       DateTime  @default(now())
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trains          Train[]
-  journeys        Journey[]
-
-  @@index([userId])
-  @@index([originCode, destinationCode])
-}
-
-model Train {
-  id               String    @id @default(cuid())
-  routeId          String
-  trainNumber      String
-  trainName        String
-  preferredClasses String[]
-  createdAt        DateTime  @default(now())
-  route            Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
-  journeys         Journey[]
-
-  @@index([trainNumber])
-  @@index([routeId])
-}
-
-model Journey {
-  id               String            @id @default(cuid())
-  userId           String
-  routeId          String
-  trainId          String
-  travelDate       DateTime
-  bookingOpenDate  DateTime
-  preferredClass   String
-  sourceCode       String?
-  sourceName       String?
-  destinationCode  String?
-  destinationName  String?
-  direction        TravelDirection
-  recurrence       RecurrenceType
-  status           JourneyStatus     @default(PLANNED)
-  notes            String?
-  pnr              String?
-  coach            String?
-  seat             String?
-  bookingDate      DateTime?
-  farePaid         Decimal?          @db.Decimal(10, 2)
-  waitlistPosition Int?
-  remindersEnabled Boolean           @default(true)
-  reminderEmailEnabled Boolean       @default(true)
-  reminderDiscordEnabled Boolean     @default(false)
-  reminderInAppEnabled Boolean       @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  route            Route             @relation(fields: [routeId], references: [id])
-  train            Train             @relation(fields: [trainId], references: [id])
-  reminders        JourneyReminder[]
-  attachments      Attachment[]
+model TicketPlan {
+  id                     String             @id @default(cuid())
+  userId                 String
+  sourceCode             String
+  sourceName             String?
+  destinationCode        String
+  destinationName        String?
+  travelDate             DateTime           @db.Date
+  bookingOpensAt         DateTime           @map("bookingOpenDate") @db.Timestamptz(3)
+  status                 TicketStatus       @default(PLANNED)
+  notes                  String?
+  pnrEncrypted           String?            @map("pnr")
+  pnrLast4               String?
+  remindersEnabled       Boolean            @default(true)
+  reminderEmailEnabled   Boolean            @default(true)
+  reminderDiscordEnabled Boolean            @default(false)
+  reminderInAppEnabled   Boolean            @default(true)
+  version                Int                @default(1)
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminderSchedules      ReminderSchedule[]
+  pnrSnapshot            PnrSnapshot?
 
   @@index([userId, travelDate])
-  @@index([userId, bookingOpenDate])
-  @@index([status])
+  @@index([userId, bookingOpensAt])
+  @@index([userId, status])
+  @@map("Journey")
 }
 
-model JourneyReminder {
-  id        String       @id @default(cuid())
-  journeyId String
-  type      ReminderType
-  dueAt     DateTime
-  sentAt    DateTime?
-  createdAt DateTime     @default(now())
-  journey   Journey      @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+model PnrSnapshot {
+  id             String     @id @default(cuid())
+  ticketId       String     @unique
+  provider       String
+  trainNumber    String?
+  trainName      String?
+  bookedClass    String?
+  providerStatus String?
+  coach          String?
+  seat           String?
+  syncedAt       DateTime   @default(now())
+  nextSyncAt     DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  ticket         TicketPlan @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
-  @@unique([journeyId, type])
-  @@index([dueAt])
+  @@index([nextSyncAt])
+}
+
+model ReminderSchedule {
+  id          String             @id @default(cuid())
+  ticketId    String             @map("journeyId")
+  type        ReminderType
+  dueAt       DateTime           @db.Timestamptz(3)
+  processedAt DateTime?
+  createdAt   DateTime           @default(now())
+  ticket      TicketPlan         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  deliveries  ReminderDelivery[]
+
+  @@unique([ticketId, type])
+  @@index([dueAt, processedAt])
+  @@map("JourneyReminder")
+}
+
+model ReminderDelivery {
+  id            String              @id @default(cuid())
+  scheduleId    String
+  userId        String
+  channel       NotificationChannel
+  status        DeliveryStatus      @default(PENDING)
+  attemptCount  Int                 @default(0)
+  nextAttemptAt DateTime?
+  sentAt        DateTime?
+  readAt        DateTime?
+  lastError     String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  schedule      ReminderSchedule    @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, channel])
+  @@index([userId, channel, status, createdAt])
+  @@index([status, nextAttemptAt])
 }
 
 model Holiday {
   id        String      @id @default(cuid())
-  userId    String?
+  userId    String
   name      String
-  date      DateTime
+  date      DateTime    @db.Date
   type      HolidayType
-  region    String?
   createdAt DateTime    @default(now())
-  user      User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([date])
-  @@index([type])
+  @@unique([userId, date, name])
+  @@index([userId, date])
 }
 
-model LeaveRequest {
-  id        String   @id @default(cuid())
-  userId    String
-  startDate DateTime
-  endDate   DateTime
-  reason    String?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String?
+  metadata   Json?
+  ipHash     String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
 
-  @@index([userId, startDate])
-}
-
-model Notification {
-  id        String              @id @default(cuid())
-  userId    String
-  channel   NotificationChannel
-  title     String
-  body      String
-  status    NotificationStatus  @default(QUEUED)
-  scheduledAt DateTime
-  sentAt    DateTime?
-  createdAt DateTime            @default(now())
-  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, scheduledAt])
-  @@index([status])
-}
-
-model Attachment {
-  id        String   @id @default(cuid())
-  userId    String
-  journeyId String
-  fileName  String
-  mimeType  String
-  objectKey String
-  sizeBytes Int
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  journey   Journey  @relation(fields: [journeyId], references: [id], onDelete: Cascade)
-
-  @@index([journeyId])
-  @@index([userId])
+  @@index([actorId, createdAt])
+  @@index([targetType, targetId])
 }

@@ -1,58 +1,36 @@
-export type JourneyStatus =
-  | "PLANNED"
-  | "BOOKING_WINDOW_OPEN"
-  | "BOOKED"
-  | "WAITLISTED"
-  | "RAC"
-  | "CONFIRMED"
-  | "CANCELLED"
-  | "COMPLETED";
-
-export type TravelDirection = "HOME_TO_OFFICE" | "OFFICE_TO_HOME";
-export type RecurrenceType = "ONE_TIME" | "WEEKLY" | "CUSTOM";
-export type HolidayType = "NATIONAL" | "STATE" | "COMPANY" | "PERSONAL_LEAVE";
+export type TicketStatus = "PLANNED" | "BOOKED" | "ARCHIVED";
+export type HolidayType = "COMPANY" | "PERSONAL_LEAVE";
 export type ReminderType = "SEVEN_DAYS_BEFORE" | "ONE_DAY_BEFORE" | "BOOKING_OPEN";
+export type NotificationChannel = "EMAIL" | "DISCORD" | "IN_APP";
 
-export type Route = {
-  id: string;
-  originCode: string;
-  originName: string;
-  destinationCode: string;
-  destinationName: string;
-};
-
-export type Train = {
-  id: string;
-  trainNumber: string;
-  trainName: string;
-  routeId: string;
-  preferredClasses: string[];
-};
-
-export type Journey = {
-  id: string;
-  routeId: string;
-  trainId: string;
-  travelDate: string;
-  bookingOpenDate: string;
-  preferredClass: string;
-  sourceCode?: string;
-  sourceName?: string;
-  destinationCode?: string;
-  destinationName?: string;
-  direction?: TravelDirection;
-  recurrence?: RecurrenceType;
-  status: JourneyStatus;
-  notes?: string;
-  pnr?: string | null;
+export type PnrSnapshot = {
+  trainNumber?: string;
+  trainName?: string;
+  bookedClass?: string;
+  providerStatus?: string;
   coach?: string;
   seat?: string;
-  bookingDate?: string;
-  waitlistPosition?: number;
-  remindersEnabled?: boolean;
-  reminderEmailEnabled?: boolean;
-  reminderDiscordEnabled?: boolean;
-  reminderInAppEnabled?: boolean;
+  syncedAt: string;
+};
+
+export type Ticket = {
+  id: string;
+  sourceCode: string;
+  sourceName?: string;
+  destinationCode: string;
+  destinationName?: string;
+  travelDate: string;
+  bookingOpensAt: string;
+  status: TicketStatus;
+  notes?: string;
+  pnrTagged: boolean;
+  pnrLast4?: string;
+  remindersEnabled: boolean;
+  reminderEmailEnabled: boolean;
+  reminderDiscordEnabled: boolean;
+  reminderInAppEnabled: boolean;
+  version: number;
+  pnrSnapshot?: PnrSnapshot;
 };
 
 export type Holiday = {
@@ -62,20 +40,28 @@ export type Holiday = {
   type: HolidayType;
 };
 
-export type NotificationPreference = {
-  channel: "EMAIL" | "DISCORD" | "IN_APP";
-  enabled: boolean;
-};
-
-export type AnalyticsPoint = {
-  month: string;
-  trips: number;
-};
-
-export type Reminder = {
+export type NotificationItem = {
   id: string;
-  journeyId: string;
+  ticketId: string;
+  route: string;
   type: ReminderType;
-  dueDate: string;
-  message: string;
+  dueAt: string;
+  travelDate: string;
+  bookingOpensAt: string;
+  readAt?: string;
+};
+
+export type ManagedUser = {
+  id: string;
+  email: string;
+  name?: string;
+  role: "ADMIN" | "USER";
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type PublicReminderSettings = {
+  email: boolean;
+  discord: boolean;
+  inApp: boolean;
 };

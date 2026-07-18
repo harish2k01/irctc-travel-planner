@@ -1,35 +1,23 @@
 # User Flows
 
-## Track a Ticket To Book
+## Plan and book
 
-1. Open Planner.
-2. Enter PNR, source, destination, and travel date.
-3. Choose enabled reminder channels for the ticket.
-4. Save the ticket.
-5. Track it in Tracker and Calendar.
+1. Add source, destination, and travel date in Planner.
+2. Enable any administrator-supported reminder channels.
+3. Review the calculated booking date in Tracker or Calendar.
+4. Open the exact ticket from the dashboard, calendar, suggestion, or notification.
+5. After booking, edit the plan and tag its optional 10-digit PNR.
+6. Sync provider details when a PNR provider is configured.
 
-## Book When the Window Opens
+## Leave planning
 
-1. Receive reminder 7 days before booking opens.
-2. Receive reminder 1 day before booking opens.
-3. See "Book Today" on the dashboard when the booking open date is today.
-4. Open IRCTC manually or use a Phase 2 deep link.
-5. Return to Tracker.
-6. Mark status as Booked, Waitlisted, RAC, or Confirmed.
-7. Add PNR, coach/seat, waitlist position, and ticket attachment.
+1. Add company or personal leave, or import an ICS calendar.
+2. Review dynamically generated suggestions tied to ticket route and travel date.
+3. Open a suggested ticket directly in Tracker.
 
-## Manage Holidays and Leave
+## User provisioning
 
-1. Open Holidays.
-2. Import CSV, sync ICS, or add manually.
-3. Calendar shows holiday and leave dates next to travel plans.
-4. Dashboard surfaces upcoming holidays.
-5. Suggestions identify long weekends and high-demand periods.
-
-## Review Travel History
-
-1. Open Analytics.
-2. Review monthly ticket count.
-3. Review tickets to book and booked ticket count.
-4. Identify most-used routes.
-5. Export ticket history in Phase 2.
+1. Configure SMTP in Settings.
+2. Invite a user with name, email, and role.
+3. The user receives an expiring one-time password-setup link.
+4. Administrators can edit role/access or delete the user while the last active administrator is protected.

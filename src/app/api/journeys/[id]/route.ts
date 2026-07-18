@@ -1,125 +1,105 @@
-import { NextResponse } from "next/server";
-import { updateJourneyStatusSchema } from "@/lib/api-schemas";
+import { updateTicketSchema } from "@/lib/api-schemas";
+import { writeAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
-import { buildJourneyReminders, calculateBookingOpenDate } from "@/lib/dates";
+import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
-
-function hasDatabase() {
-  return Boolean(process.env.DATABASE_URL);
-}
-
-function toDate(dateOnly?: string) {
-  return dateOnly ? new Date(`${dateOnly}T00:00:00.000Z`) : undefined;
-}
+import { ApiError, assertSameOrigin, jsonData, parseJson, routeError } from "@/lib/http";
+import { syncTicketPnr } from "@/lib/pnr-sync";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getAppSettings } from "@/lib/settings";
+import { serializeTicket, syncReminderSchedules, ticketBookingInstant } from "@/lib/tickets";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser();
-  const { id } = await params;
-  const parsed = updateJourneyStatusSchema.safeParse(await request.json());
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    await enforceRateLimit(request, "ticket:update", 60, 60_000, user.id);
+    const { id } = await params;
+    const input = await parseJson(request, updateTicketSchema);
+    const settings = await getAppSettings();
+    const existing = await prisma.ticketPlan.findFirst({ where: { id, userId: user.id } });
+    if (!existing) throw new ApiError(404, "Ticket not found.", "NOT_FOUND");
 
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
-  }
+    const pnrProvided = Object.prototype.hasOwnProperty.call(input, "pnr");
+    const nextPnr = typeof input.pnr === "string" && input.pnr ? input.pnr : undefined;
+    const travelDate = input.travelDate ?? existing.travelDate.toISOString().slice(0, 10);
+    const bookingOpensAt = input.travelDate
+      ? ticketBookingInstant({
+          travelDate,
+          bookingWindowDays: settings.bookingWindowDays,
+          bookingOpenHour: settings.bookingOpenHour,
+          bookingOpenMinute: settings.bookingOpenMinute,
+          timeZone: user.timeZone,
+        })
+      : existing.bookingOpensAt;
 
-  const bookingOpenDate = parsed.data.travelDate ? calculateBookingOpenDate(parsed.data.travelDate) : undefined;
-
-  if (!hasDatabase()) {
-    return NextResponse.json({
-      data: { id, ...parsed.data, ...(bookingOpenDate ? { bookingOpenDate } : {}) },
-      source: "preview",
-    });
-  }
-
-  const existing = await prisma.journey.findFirst({ where: { id, userId: user.id } });
-
-  if (!existing) {
-    return NextResponse.json({ error: "Journey not found." }, { status: 404 });
-  }
-
-  const data = await prisma.$transaction(async (tx) => {
-    if (parsed.data.trainNumber || parsed.data.trainName) {
-      const currentTrain = await tx.train.findFirst({
-        where: {
-          id: existing.trainId,
-          route: { userId: user.id },
+    await prisma.$transaction(async (tx) => {
+      const result = await tx.ticketPlan.updateMany({
+        where: { id, userId: user.id, version: input.version },
+        data: {
+          sourceCode: input.sourceCode,
+          sourceName: input.sourceName,
+          destinationCode: input.destinationCode,
+          destinationName: input.destinationName,
+          travelDate: input.travelDate ? new Date(`${input.travelDate}T00:00:00.000Z`) : undefined,
+          bookingOpensAt,
+          notes: input.notes,
+          status: pnrProvided ? (nextPnr ? "BOOKED" : "PLANNED") : input.status,
+          pnrEncrypted: pnrProvided ? (nextPnr ? encryptSecret(nextPnr) : null) : undefined,
+          pnrLast4: pnrProvided ? nextPnr?.slice(-4) ?? null : undefined,
+          reminderEmailEnabled: input.reminderEmailEnabled === undefined
+            ? undefined
+            : settings.reminderEmailEnabled && input.reminderEmailEnabled,
+          reminderDiscordEnabled: input.reminderDiscordEnabled === undefined
+            ? undefined
+            : settings.reminderDiscordEnabled && input.reminderDiscordEnabled,
+          reminderInAppEnabled: input.reminderInAppEnabled === undefined
+            ? undefined
+            : settings.reminderInAppEnabled && input.reminderInAppEnabled,
+          version: { increment: 1 },
         },
       });
-
-      if (currentTrain) {
-        await tx.train.update({
-          where: { id: currentTrain.id },
-          data: {
-            trainNumber: parsed.data.trainNumber ?? currentTrain.trainNumber,
-            trainName: parsed.data.trainName ?? currentTrain.trainName,
-            preferredClasses: parsed.data.preferredClass
-              ? Array.from(new Set([parsed.data.preferredClass, ...currentTrain.preferredClasses]))
-              : currentTrain.preferredClasses,
-          },
-        });
+      if (result.count !== 1) throw new ApiError(409, "This ticket changed in another session. Reload and try again.", "VERSION_CONFLICT");
+      if (pnrProvided && !nextPnr) await tx.pnrSnapshot.deleteMany({ where: { ticketId: id } });
+      const updated = await tx.ticketPlan.findUniqueOrThrow({ where: { id } });
+      if (
+        input.travelDate !== undefined
+        || input.status !== undefined
+        || pnrProvided
+        || input.reminderEmailEnabled !== undefined
+        || input.reminderDiscordEnabled !== undefined
+        || input.reminderInAppEnabled !== undefined
+      ) {
+        await syncReminderSchedules(tx, updated, settings);
       }
-    }
-
-    const journeyPatch = { ...parsed.data };
-    delete journeyPatch.trainNumber;
-    delete journeyPatch.trainName;
-    const journey = await tx.journey.update({
-      where: { id },
-      data: {
-        ...journeyPatch,
-        travelDate: toDate(parsed.data.travelDate),
-        bookingOpenDate: toDate(bookingOpenDate),
-        bookingDate: toDate(parsed.data.bookingDate),
-      },
     });
 
-    if (
-      bookingOpenDate ||
-      parsed.data.remindersEnabled !== undefined ||
-      parsed.data.reminderEmailEnabled !== undefined ||
-      parsed.data.reminderDiscordEnabled !== undefined ||
-      parsed.data.reminderInAppEnabled !== undefined
-    ) {
-      await tx.journeyReminder.deleteMany({ where: { journeyId: id } });
-      if (journey.remindersEnabled && (journey.reminderEmailEnabled || journey.reminderDiscordEnabled || journey.reminderInAppEnabled)) {
-        const nextBookingOpenDate = bookingOpenDate ?? journey.bookingOpenDate.toISOString().slice(0, 10);
-        await tx.journeyReminder.createMany({
-          data: buildJourneyReminders({
-            id,
-            routeId: journey.routeId,
-            trainId: journey.trainId,
-            travelDate: parsed.data.travelDate ?? journey.travelDate.toISOString().slice(0, 10),
-            bookingOpenDate: nextBookingOpenDate,
-            preferredClass: journey.preferredClass,
-            sourceCode: journey.sourceCode ?? undefined,
-            sourceName: journey.sourceName ?? undefined,
-            destinationCode: journey.destinationCode ?? undefined,
-            destinationName: journey.destinationName ?? undefined,
-            direction: journey.direction,
-            recurrence: journey.recurrence,
-            status: journey.status,
-          }).map((reminder) => ({
-            journeyId: id,
-            type: reminder.type,
-            dueAt: toDate(reminder.dueDate) as Date,
-          })),
-        });
+    let warning: string | undefined;
+    if (nextPnr && process.env.PNR_PROVIDER_URL) {
+      try {
+        await syncTicketPnr(id, user.id);
+      } catch {
+        warning = "The PNR was tagged, but provider details could not be refreshed.";
       }
     }
-
-    return journey;
-  });
-
-  return NextResponse.json({ data, source: "database" });
+    const saved = await prisma.ticketPlan.findUniqueOrThrow({ where: { id }, include: { pnrSnapshot: true } });
+    await writeAudit({ actorId: user.id, action: "ticket.updated", targetType: "TicketPlan", targetId: id, request });
+    return jsonData({ ticket: serializeTicket(saved), warning });
+  } catch (error) {
+    return routeError(error, request);
+  }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser();
-  const { id } = await params;
-
-  if (!hasDatabase()) {
-    return NextResponse.json({ data: { id }, source: "preview" });
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    assertSameOrigin(request);
+    const user = await requireUser();
+    const { id } = await params;
+    const result = await prisma.ticketPlan.deleteMany({ where: { id, userId: user.id } });
+    if (result.count !== 1) throw new ApiError(404, "Ticket not found.", "NOT_FOUND");
+    await writeAudit({ actorId: user.id, action: "ticket.deleted", targetType: "TicketPlan", targetId: id, request });
+    return jsonData({ id });
+  } catch (error) {
+    return routeError(error, request);
   }
-
-  await prisma.journey.deleteMany({ where: { id, userId: user.id } });
-  return NextResponse.json({ data: { id }, source: "database" });
 }

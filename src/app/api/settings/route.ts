@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
+import { writeAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth";
+import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
-import { getAppSettings } from "@/lib/settings";
+import { assertSameOrigin, jsonData, parseJson, routeError } from "@/lib/http";
+import { getAppSettings, serializeAdminSettings } from "@/lib/settings";
 
 const settingsSchema = z.object({
   allowSignups: z.boolean().optional(),
@@ -12,34 +14,49 @@ const settingsSchema = z.object({
   reminderSevenDaysEnabled: z.boolean().optional(),
   reminderOneDayEnabled: z.boolean().optional(),
   reminderBookingOpenEnabled: z.boolean().optional(),
-  smtpUrl: z.string().max(500).or(z.literal("")).optional(),
-  emailFrom: z.string().max(200).or(z.literal("")).optional(),
-  discordWebhookUrl: z.string().url().or(z.literal("")).optional(),
+  bookingWindowDays: z.number().int().min(1).max(365).optional(),
+  bookingOpenHour: z.number().int().min(0).max(23).optional(),
+  bookingOpenMinute: z.number().int().min(0).max(59).optional(),
+  pnrAutoSyncEnabled: z.boolean().optional(),
+  pnrSyncIntervalMinutes: z.number().int().min(15).max(10_080).optional(),
+  smtpUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),
+  emailFrom: z.union([z.string().trim().max(200), z.literal(""), z.null()]).optional(),
+  discordWebhookUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),
 });
 
-export async function GET() {
-  await requireAdmin();
-  const settings = await getAppSettings();
-  return NextResponse.json({ data: settings });
+export async function GET(request: Request) {
+  try {
+    await requireAdmin();
+    return jsonData(serializeAdminSettings(await getAppSettings()));
+  } catch (error) {
+    return routeError(error, request);
+  }
 }
 
 export async function PATCH(request: Request) {
-  await requireAdmin();
-  const parsed = settingsSchema.safeParse(await request.json());
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  try {
+    assertSameOrigin(request);
+    const admin = await requireAdmin();
+    const input = await parseJson(request, settingsSchema);
+    const data = {
+      ...input,
+      smtpUrl: input.smtpUrl === undefined ? undefined : input.smtpUrl ? encryptSecret(input.smtpUrl) : null,
+      discordWebhookUrl: input.discordWebhookUrl === undefined
+        ? undefined
+        : input.discordWebhookUrl ? encryptSecret(input.discordWebhookUrl) : null,
+      emailFrom: input.emailFrom === undefined ? undefined : input.emailFrom || null,
+    };
+    const settings = await prisma.appSettings.update({ where: { id: "global" }, data });
+    await writeAudit({
+      actorId: admin.id,
+      action: "settings.updated",
+      targetType: "AppSettings",
+      targetId: settings.id,
+      metadata: { fields: Object.keys(input) },
+      request,
+    });
+    return jsonData(serializeAdminSettings(settings));
+  } catch (error) {
+    return routeError(error, request);
   }
-
-  const settings = await prisma.appSettings.update({
-    where: { id: "global" },
-    data: {
-      ...parsed.data,
-      smtpUrl: parsed.data.smtpUrl === "" ? null : parsed.data.smtpUrl,
-      emailFrom: parsed.data.emailFrom === "" ? null : parsed.data.emailFrom,
-      discordWebhookUrl: parsed.data.discordWebhookUrl === "" ? null : parsed.data.discordWebhookUrl,
-    },
-  });
-
-  return NextResponse.json({ data: settings });
 }

@@ -1,52 +1,57 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
+import { writeAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { ApiError, assertSameOrigin, jsonData, parseJson, routeError } from "@/lib/http";
 
-const updateUserSchema = z.object({
-  name: z.string().max(120).optional(),
+const schema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
   role: z.enum(["ADMIN", "USER"]).optional(),
   isActive: z.boolean().optional(),
 });
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const currentUser = await requireAdmin();
-  const { id } = await params;
-  const parsed = updateUserSchema.safeParse(await request.json());
-
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+async function protectLastAdmin(id: string, role?: "ADMIN" | "USER", isActive?: boolean) {
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) throw new ApiError(404, "User not found.", "NOT_FOUND");
+  if (target.role === "ADMIN" && (role === "USER" || isActive === false)) {
+    const adminCount = await prisma.user.count({ where: { role: "ADMIN", isActive: true } });
+    if (adminCount <= 1) throw new ApiError(400, "At least one active administrator is required.", "LAST_ADMIN");
   }
-
-  if (id === currentUser.id && parsed.data.isActive === false) {
-    return NextResponse.json({ error: "You cannot deactivate your own account." }, { status: 400 });
-  }
-
-  const user = await prisma.user.update({
-    where: { id },
-    data: parsed.data,
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      isActive: true,
-      mustResetPassword: true,
-      createdAt: true,
-    },
-  });
-
-  return NextResponse.json({ data: user });
+  return target;
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const currentUser = await requireAdmin();
-  const { id } = await params;
-
-  if (id === currentUser.id) {
-    return NextResponse.json({ error: "You cannot delete your own account." }, { status: 400 });
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    assertSameOrigin(request);
+    const admin = await requireAdmin();
+    const { id } = await params;
+    const input = await parseJson(request, schema);
+    if (id === admin.id && input.isActive === false) throw new ApiError(400, "You cannot deactivate your own account.", "SELF_UPDATE");
+    await protectLastAdmin(id, input.role, input.isActive);
+    const user = await prisma.user.update({
+      where: { id },
+      data: input,
+      select: { id: true, email: true, name: true, role: true, isActive: true, createdAt: true },
+    });
+    await writeAudit({ actorId: admin.id, action: "user.updated", targetType: "User", targetId: id, metadata: { fields: Object.keys(input) }, request });
+    return jsonData({ ...user, name: user.name ?? undefined, createdAt: user.createdAt.toISOString() });
+  } catch (error) {
+    return routeError(error, request);
   }
+}
 
-  await prisma.user.delete({ where: { id } });
-  return NextResponse.json({ data: { id } });
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    assertSameOrigin(request);
+    const admin = await requireAdmin();
+    const { id } = await params;
+    if (id === admin.id) throw new ApiError(400, "You cannot delete your own account.", "SELF_UPDATE");
+    await protectLastAdmin(id, "USER", false);
+    const result = await prisma.user.deleteMany({ where: { id } });
+    if (result.count !== 1) throw new ApiError(404, "User not found.", "NOT_FOUND");
+    await writeAudit({ actorId: admin.id, action: "user.deleted", targetType: "User", targetId: id, request });
+    return jsonData({ id });
+  } catch (error) {
+    return routeError(error, request);
+  }
 }

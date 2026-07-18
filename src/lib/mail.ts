@@ -1,63 +1,52 @@
 import nodemailer from "nodemailer";
-import { getAppSettings } from "@/lib/settings";
+import { getDeliveryConfiguration } from "@/lib/settings";
 
-async function getMailConfig() {
-  const settings = await getAppSettings();
-
-  return {
-    smtpUrl: settings.smtpUrl ?? process.env.SMTP_URL,
-    emailFrom: settings.emailFrom ?? process.env.EMAIL_FROM ?? "IRCTC Travel Planner <noreply@example.com>",
-  };
+function appUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 }
 
-export async function sendTemporaryPasswordEmail(email: string, temporaryPassword: string) {
-  const { smtpUrl, emailFrom } = await getMailConfig();
-
-  if (!smtpUrl) {
-    return { sent: false, reason: "SMTP URL is not configured." };
-  }
-
-  const transporter = nodemailer.createTransport(smtpUrl);
-
-  await transporter.sendMail({
-    from: emailFrom,
-    to: email,
-    subject: "Your IRCTC Travel Planner temporary password",
-    text: [
-      "An administrator created an IRCTC Travel Planner account for you.",
-      "",
-      `Temporary password: ${temporaryPassword}`,
-      "",
-      "Sign in with this password and set a new password when prompted.",
-    ].join("\n"),
+async function send(to: string, subject: string, text: string) {
+  const config = await getDeliveryConfiguration();
+  if (!config.smtpUrl) return { sent: false as const, reason: "Email delivery is not configured." };
+  const transporter = nodemailer.createTransport(config.smtpUrl, {
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
   });
-
-  return { sent: true };
+  await transporter.sendMail({ from: config.emailFrom, to, subject, text });
+  return { sent: true as const };
 }
 
-export async function sendPasswordResetEmail(email: string, temporaryPassword: string) {
-  const { smtpUrl, emailFrom } = await getMailConfig();
+export function sendInvitationEmail(email: string, token: string) {
+  const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=invitation`;
+  return send(email, "Set up your IRCTC Travel Planner account", [
+    "An administrator created an IRCTC Travel Planner account for you.",
+    "",
+    `Set your password using this one-time link: ${url}`,
+    "",
+    "The link expires in 24 hours.",
+  ].join("\n"));
+}
 
-  if (!smtpUrl) {
-    return { sent: false, reason: "SMTP URL is not configured." };
-  }
+export function sendPasswordResetEmail(email: string, token: string) {
+  const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=reset`;
+  return send(email, "Reset your IRCTC Travel Planner password", [
+    "A password reset was requested for your account.",
+    "",
+    `Choose a new password using this one-time link: ${url}`,
+    "",
+    "The link expires in 30 minutes. Ignore this message if you did not request it.",
+  ].join("\n"));
+}
 
-  const transporter = nodemailer.createTransport(smtpUrl);
-
-  await transporter.sendMail({
-    from: emailFrom,
-    to: email,
-    subject: "Reset your IRCTC Travel Planner password",
-    text: [
-      "A password reset was requested for your IRCTC Travel Planner account.",
-      "",
-      `Temporary password: ${temporaryPassword}`,
-      "",
-      "Sign in with this temporary password. You will be asked to set a new password immediately.",
-      "",
-      "If you did not request this, contact your administrator.",
-    ].join("\n"),
-  });
-
-  return { sent: true };
+export function sendReminderEmail(input: { email: string; route: string; travelDate: string; bookingDate: string; message: string }) {
+  return send(input.email, `Booking reminder: ${input.route}`, [
+    input.message,
+    "",
+    `Route: ${input.route}`,
+    `Travel date: ${input.travelDate}`,
+    `Booking date: ${input.bookingDate}`,
+    "",
+    `${appUrl()}/tracker`,
+  ].join("\n"));
 }

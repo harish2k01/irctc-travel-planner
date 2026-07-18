@@ -1,45 +1,11 @@
 # Information Architecture
 
-## Primary Navigation
+- Dashboard: booking actions, planned tickets, booked tickets, and upcoming leave.
+- Planner: create a ticket plan with route, travel date, optional PNR, notes, and enabled reminder channels.
+- Tracker: searchable, filtered, paginated ticket table with detail, edit, PNR sync, and delete actions.
+- Calendar: booking dates, travel dates, company leave, and personal leave.
+- Holidays: leave CRUD, ICS import, and ticket-specific travel suggestions.
+- Analytics: ticket volume, reminder coverage, monthly activity, and route history.
+- Settings (administrators): signups, users, reminder channels, SMTP, Discord, booking timing, and automatic PNR refresh.
 
-1. Dashboard
-   - Upcoming tickets
-   - Booking windows opening soon
-   - Pending and confirmed booking summaries
-   - Upcoming holidays and long-weekend signals
-2. Planner
-   - Quick ticket tracking
-   - Manual source and destination entry
-   - PNR-backed ticket detail sync
-   - Notes and per-ticket reminder channel toggles
-   - Generated booking open date and reminder dates
-3. Tracker
-   - Kanban columns by journey state
-   - PNR, coach, seat, waitlist, attachment actions
-4. Calendar
-   - Travel dates
-   - Booking open dates
-   - Reminder dates
-   - Holidays and leave days
-   - Month, week, agenda views
-5. Holidays
-   - Company holidays
-   - Personal leave days
-   - CSV import and ICS sync entry points
-6. Analytics
-   - Tickets per month
-   - Most-used routes
-   - Tickets to book
-   - Booked ticket count
-
-## Object Model
-
-- User owns routes, journeys, leaves, notifications, and attachments.
-- Route groups a recurring city pair and owns train preferences.
-- Train belongs to a route and can be reused across journeys.
-- Journey is the central planning object.
-- JourneyReminder is generated from bookingOpenDate.
-- Holiday can be system-level or user-owned.
-- LeaveRequest is user-owned and feeds calendar/suggestions.
-- Notification tracks delivery across email, Discord, and In-App channels.
-- Attachment stores ticket PDFs/screenshots through object storage keys.
+The persistent sidebar can be collapsed. Logout remains at the bottom. There is no separate account page; the header contains only the current section title and notification control.

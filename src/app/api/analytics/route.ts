@@ -1,50 +1,37 @@
-import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { noStoreHeaders, routeError } from "@/lib/http";
 
-function hasDatabase() {
-  return Boolean(process.env.DATABASE_URL);
-}
-
-export async function GET() {
-  if (!hasDatabase()) {
-    return NextResponse.json({
-      data: {
-        monthly: [],
-        totals: {
-          totalTrips: 0,
-          ticketsToBook: 0,
-          bookedTrips: 0,
-        },
-      },
-      source: "empty",
+export async function GET(request: Request) {
+  try {
+    const user = await requireUser();
+    const tickets = await prisma.ticketPlan.findMany({
+      where: { userId: user.id },
+      select: { sourceCode: true, destinationCode: true, travelDate: true, status: true },
+      orderBy: { travelDate: "asc" },
+      take: 2_000,
     });
-  }
-
-  const user = await requireUser();
-  const journeys = await prisma.journey.findMany({ where: { userId: user.id }, orderBy: { travelDate: "asc" } });
-  const totalTrips = journeys.length;
-  const ticketsToBook = journeys.filter((journey) => ["PLANNED", "BOOKING_WINDOW_OPEN"].includes(journey.status)).length;
-  const bookedTrips = journeys.filter((journey) => ["BOOKED", "CONFIRMED"].includes(journey.status)).length;
-  const monthly = Array.from(
-    journeys.reduce((map, journey) => {
-      const month = journey.travelDate.toISOString().slice(0, 7);
-      const item = map.get(month) ?? { month, trips: 0 };
-      item.trips += 1;
-      map.set(month, item);
-      return map;
-    }, new Map<string, { month: string; trips: number }>()),
-  ).map(([, item]) => item);
-
-  return NextResponse.json({
-    data: {
-      monthly,
-      totals: {
-        totalTrips,
-        ticketsToBook,
-        bookedTrips,
+    const byMonth = new Map<string, number>();
+    const byRoute = new Map<string, number>();
+    for (const ticket of tickets) {
+      const month = ticket.travelDate.toISOString().slice(0, 7);
+      const route = `${ticket.sourceCode} to ${ticket.destinationCode}`;
+      byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
+      byRoute.set(route, (byRoute.get(route) ?? 0) + 1);
+    }
+    return Response.json({
+      data: {
+        totals: {
+          all: tickets.length,
+          toBook: tickets.filter((ticket) => ticket.status === "PLANNED").length,
+          booked: tickets.filter((ticket) => ticket.status === "BOOKED").length,
+          archived: tickets.filter((ticket) => ticket.status === "ARCHIVED").length,
+        },
+        monthly: Array.from(byMonth, ([month, tickets]) => ({ month, tickets })),
+        routes: Array.from(byRoute, ([route, tickets]) => ({ route, tickets })).sort((a, b) => b.tickets - a.tickets).slice(0, 10),
       },
-    },
-    source: "database",
-  });
+    }, { headers: noStoreHeaders() });
+  } catch (error) {
+    return routeError(error, request);
+  }
 }

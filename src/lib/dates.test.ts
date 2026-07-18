@@ -1,36 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { buildJourneyReminders, calculateBookingOpenDate, getBookingUrgency } from "./dates";
-import type { Journey } from "./types";
+import { addDays, bookingOpenInstant, calculateBookingOpenDate, dateInTimeZone, daysBetween, reminderInstants } from "./dates";
 
-const journey: Journey = {
-  id: "test",
-  routeId: "route",
-  trainId: "12624",
-  travelDate: "2026-08-18",
-  bookingOpenDate: "2026-06-19",
-  preferredClass: "3A",
-  direction: "HOME_TO_OFFICE",
-  recurrence: "WEEKLY",
-  status: "PLANNED",
-};
-
-describe("IRCTC booking window logic", () => {
-  it("calculates booking open date exactly 60 days before travel", () => {
-    expect(calculateBookingOpenDate("2026-08-18")).toBe("2026-06-19");
+describe("booking dates", () => {
+  it("subtracts the configured booking window", () => {
+    expect(calculateBookingOpenDate("2026-08-18", 60)).toBe("2026-06-19");
+    expect(calculateBookingOpenDate("2026-08-18", 30)).toBe("2026-07-19");
   });
 
-  it("creates the three expected reminders", () => {
-    expect(buildJourneyReminders(journey).map((reminder) => reminder.dueDate)).toEqual([
-      "2026-06-12",
-      "2026-06-18",
-      "2026-06-19",
-    ]);
+  it("handles month and leap-year boundaries", () => {
+    expect(addDays("2028-03-01", -1)).toBe("2028-02-29");
+    expect(addDays("2026-01-01", -1)).toBe("2025-12-31");
   });
 
-  it("marks unbooked journeys as book today when the window is open", () => {
-    expect(getBookingUrgency(journey, "2026-06-19")).toMatchObject({
-      label: "Book Today",
-      tone: "red",
-    });
+  it("creates the configured booking instant in Asia/Kolkata", () => {
+    expect(bookingOpenInstant("2026-08-18", 60, 8, 0, "Asia/Kolkata").toISOString()).toBe("2026-06-19T02:30:00.000Z");
+  });
+
+  it("creates all reminder instants relative to booking open", () => {
+    const booking = new Date("2026-06-19T02:30:00.000Z");
+    const reminders = reminderInstants(booking);
+    expect(reminders.SEVEN_DAYS_BEFORE.toISOString()).toBe("2026-06-12T02:30:00.000Z");
+    expect(reminders.ONE_DAY_BEFORE.toISOString()).toBe("2026-06-18T02:30:00.000Z");
+    expect(reminders.BOOKING_OPEN).toBe(booking);
+  });
+
+  it("formats an instant in the user's timezone", () => {
+    expect(dateInTimeZone("2026-06-18T20:00:00.000Z", "Asia/Kolkata")).toBe("2026-06-19");
+  });
+
+  it("compares date-only values without time drift", () => {
+    expect(daysBetween("2026-06-19", "2026-06-26")).toBe(7);
   });
 });
