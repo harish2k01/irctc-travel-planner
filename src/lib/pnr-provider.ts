@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { fetchExternal, limitedResponseText, validateExternalUrl } from "@/lib/safe-fetch";
+import { getPnrConfiguration } from "@/lib/settings";
 
 const normalizedSchema = z.object({
   trainNumber: z.string().max(20).optional(),
@@ -62,13 +63,12 @@ export function normalizePnrPayload(payload: unknown): PnrProviderResult {
 }
 
 export async function lookupPnr(pnr: string) {
-  const providerTemplate = process.env.PNR_PROVIDER_URL;
+  const { providerUrl: providerTemplate, apiKey } = await getPnrConfiguration();
   if (!providerTemplate) throw new ApiError(503, "PNR sync is not configured.", "PNR_PROVIDER_NOT_CONFIGURED");
 
   const rawUrl = providerTemplate.includes("{pnr}") ? providerTemplate.replace("{pnr}", pnr) : providerTemplate;
   const url = await validateExternalUrl(rawUrl);
   if (!providerTemplate.includes("{pnr}")) url.searchParams.set("pnr", pnr);
-  const apiKey = process.env.PNR_PROVIDER_API_KEY;
   const response = await fetchExternal(url, {
     headers: {
       Accept: "application/json",

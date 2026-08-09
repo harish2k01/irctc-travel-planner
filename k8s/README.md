@@ -9,7 +9,7 @@ Required keys:
 - `RATE_LIMIT_SALT`: random value used to hash rate-limit identifiers
 - `CRON_SECRET`: random worker authentication value
 
-Optional PNR provider keys are `PNR_PROVIDER_API_KEY` and a `PNR_PROVIDER_URL` ConfigMap value containing `{pnr}` or accepting a `pnr` query parameter.
+PNR provider credentials can be encrypted and stored from the app's Settings page. Optional deployment-level fallbacks are `PNR_PROVIDER_API_KEY` and a `PNR_PROVIDER_URL` ConfigMap value containing `{pnr}` or accepting a `pnr` query parameter.
 
 Run the suspended migration CronJob as a one-off Job before rolling out a new application image:
 

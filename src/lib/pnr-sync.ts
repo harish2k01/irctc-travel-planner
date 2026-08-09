@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { decryptSecret, encryptSecret, isEncrypted } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 import { lookupPnr } from "@/lib/pnr-provider";
-import { getAppSettings } from "@/lib/settings";
+import { getAppSettings, resolvePnrConfiguration } from "@/lib/settings";
 import { ticketBookingInstant } from "@/lib/tickets";
 
 export async function syncTicketPnr(ticketId: string, userId: string) {
@@ -79,7 +79,7 @@ export async function syncTicketPnr(ticketId: string, userId: string) {
 
 export async function syncDuePnrs() {
   const settings = await getAppSettings();
-  if (!settings.pnrAutoSyncEnabled || !process.env.PNR_PROVIDER_URL) return { attempted: 0, synced: 0 };
+  if (!settings.pnrAutoSyncEnabled || !resolvePnrConfiguration(settings).providerUrl) return { attempted: 0, synced: 0 };
   const snapshots = await prisma.pnrSnapshot.findMany({
     where: { nextSyncAt: { lte: new Date() }, ticket: { pnrEncrypted: { not: null }, status: "BOOKED" } },
     include: { ticket: true },

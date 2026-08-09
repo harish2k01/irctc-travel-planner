@@ -124,6 +124,8 @@ model AppSettings {
   calendarWeekStartsOn       Int      @default(0)
   pnrAutoSyncEnabled         Boolean  @default(false)
   pnrSyncIntervalMinutes     Int      @default(360)
+  pnrProviderUrl             String?
+  pnrProviderApiKey          String?
   smtpUrl                    String?
   emailFrom                  String?
   discordWebhookUrl          String?

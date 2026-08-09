@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { ApiError, assertSameOrigin, noStoreHeaders, parseJson, routeError } from "@/lib/http";
 import { syncTicketPnr } from "@/lib/pnr-sync";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { getAppSettings } from "@/lib/settings";
+import { getAppSettings, resolvePnrConfiguration } from "@/lib/settings";
 import { serializeTicket, syncReminderSchedules, ticketBookingInstant } from "@/lib/tickets";
 
 export async function GET(request: Request) {
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     });
 
     let warning: string | undefined;
-    if (pnr && process.env.PNR_PROVIDER_URL) {
+    if (pnr && resolvePnrConfiguration(settings).providerUrl) {
       try {
         await syncTicketPnr(ticket.id, user.id);
       } catch {

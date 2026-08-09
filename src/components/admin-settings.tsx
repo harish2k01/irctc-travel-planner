@@ -9,6 +9,7 @@ type Settings = {
   allowSignups: boolean; reminderEmailEnabled: boolean; reminderDiscordEnabled: boolean; reminderInAppEnabled: boolean;
   reminderSevenDaysEnabled: boolean; reminderOneDayEnabled: boolean; reminderBookingOpenEnabled: boolean;
   bookingWindowDays: number; bookingOpenHour: number; bookingOpenMinute: number; calendarWeekStartsOn: 0 | 1; pnrAutoSyncEnabled: boolean; pnrSyncIntervalMinutes: number;
+  pnrProviderConfigured: boolean; pnrProviderStored: boolean; pnrProviderApiKeyConfigured: boolean; pnrProviderApiKeyStored: boolean;
   smtpConfigured: boolean; discordConfigured: boolean; emailFrom: string;
 };
 
@@ -32,14 +33,20 @@ export function AdminSettings({ currentUserId, initialSettings, initialUsers }: 
     try {
       const smtpUrl = String(formData.get("smtpUrl") ?? "");
       const discordWebhookUrl = String(formData.get("discordWebhookUrl") ?? "");
+      const pnrProviderUrl = String(formData.get("pnrProviderUrl") ?? "");
+      const pnrProviderApiKey = String(formData.get("pnrProviderApiKey") ?? "");
       const clearSmtp = formData.get("clearSmtp") === "on";
       const clearDiscord = formData.get("clearDiscord") === "on";
+      const clearPnrProviderUrl = formData.get("clearPnrProviderUrl") === "on";
+      const clearPnrProviderApiKey = formData.get("clearPnrProviderApiKey") === "on";
       const payload = {
         ...settings,
         bookingWindowDays: Number(formData.get("bookingWindowDays")), bookingOpenHour: Number(formData.get("bookingOpenHour")), bookingOpenMinute: Number(formData.get("bookingOpenMinute")), calendarWeekStartsOn: Number(formData.get("calendarWeekStartsOn")) as 0 | 1, pnrSyncIntervalMinutes: Number(formData.get("pnrSyncIntervalMinutes")),
         emailFrom: settings.reminderEmailEnabled ? formData.get("emailFrom") : undefined,
         ...(clearSmtp ? { smtpUrl: null } : smtpUrl ? { smtpUrl } : {}),
         ...(clearDiscord ? { discordWebhookUrl: null } : discordWebhookUrl ? { discordWebhookUrl } : {}),
+        ...(clearPnrProviderUrl ? { pnrProviderUrl: null } : pnrProviderUrl ? { pnrProviderUrl } : {}),
+        ...(clearPnrProviderApiKey ? { pnrProviderApiKey: null } : pnrProviderApiKey ? { pnrProviderApiKey } : {}),
       };
       const updated = await apiRequest<Settings>("/api/settings", { method: "PATCH", body: JSON.stringify(payload) });
       setSettings(updated); setMessage("Settings saved.");
@@ -73,7 +80,37 @@ export function AdminSettings({ currentUserId, initialSettings, initialUsers }: 
       <Section title="Booking schedule"><div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-3"><NumberField name="bookingWindowDays" label="Window (days)" defaultValue={settings.bookingWindowDays} min={1} max={365} /><NumberField name="bookingOpenHour" label="Open hour" defaultValue={settings.bookingOpenHour} min={0} max={23} /><NumberField name="bookingOpenMinute" label="Open minute" defaultValue={settings.bookingOpenMinute} min={0} max={59} /></div></Section>
     </div>
     <Section title="Reminder channels"><div className="grid gap-2 p-3 sm:grid-cols-3"><Channel icon={Mail} label="Email" checked={settings.reminderEmailEnabled} onChange={(value) => setSettings({ ...settings, reminderEmailEnabled: value })} /><Channel icon={MessageCircle} label="Discord" checked={settings.reminderDiscordEnabled} onChange={(value) => setSettings({ ...settings, reminderDiscordEnabled: value })} /><Channel icon={Bell} label="In-app" checked={settings.reminderInAppEnabled} onChange={(value) => setSettings({ ...settings, reminderInAppEnabled: value })} /></div>{(settings.reminderEmailEnabled || settings.reminderDiscordEnabled) && <div className="grid gap-3 border-t border-slate-200 p-3 lg:grid-cols-2">{settings.reminderEmailEnabled && <div className="grid gap-2"><TextField name="smtpUrl" type="password" label="SMTP URL" placeholder={settings.smtpConfigured ? "Configured - enter a value to replace" : "smtp://user:password@mail.example.com:587"} />{settings.smtpConfigured && <label className="flex items-center gap-2 text-xs text-red-700"><input name="clearSmtp" type="checkbox" />Remove the saved SMTP URL</label>}</div>}{settings.reminderEmailEnabled && <TextField name="emailFrom" label="Email sender" defaultValue={settings.emailFrom} placeholder="IRCTC Travel Planner <noreply@example.com>" />}{settings.reminderDiscordEnabled && <div className="grid gap-2"><TextField name="discordWebhookUrl" type="password" label="Discord webhook URL" placeholder={settings.discordConfigured ? "Configured - enter a value to replace" : "https://discord.com/api/webhooks/..."} />{settings.discordConfigured && <label className="flex items-center gap-2 text-xs text-red-700"><input name="clearDiscord" type="checkbox" />Remove the saved Discord webhook</label>}</div>}</div>}</Section>
-    <div className="grid gap-3 xl:grid-cols-2"><Section title="Reminder timing"><div className="grid gap-2 p-3"><CheckRow label="7 days before booking opens" checked={settings.reminderSevenDaysEnabled} onChange={(value) => setSettings({ ...settings, reminderSevenDaysEnabled: value })} /><CheckRow label="1 day before booking opens" checked={settings.reminderOneDayEnabled} onChange={(value) => setSettings({ ...settings, reminderOneDayEnabled: value })} /><CheckRow label="When booking opens" checked={settings.reminderBookingOpenEnabled} onChange={(value) => setSettings({ ...settings, reminderBookingOpenEnabled: value })} /></div></Section><Section title="PNR sync"><SettingRow label="Automatic PNR refresh" detail="Refresh tagged booked tickets in the background."><Switch label="Automatic PNR refresh" checked={settings.pnrAutoSyncEnabled} onChange={(value) => setSettings({ ...settings, pnrAutoSyncEnabled: value })} /></SettingRow>{settings.pnrAutoSyncEnabled && <div className="border-t border-slate-200 p-3"><NumberField name="pnrSyncIntervalMinutes" label="Refresh interval (minutes)" defaultValue={settings.pnrSyncIntervalMinutes} min={15} max={10080} /></div>} {!settings.pnrAutoSyncEnabled && <input type="hidden" name="pnrSyncIntervalMinutes" value={settings.pnrSyncIntervalMinutes} />}</Section></div>
+    <div className="grid gap-3 xl:grid-cols-2">
+      <Section title="Reminder timing"><div className="grid gap-2 p-3"><CheckRow label="7 days before booking opens" checked={settings.reminderSevenDaysEnabled} onChange={(value) => setSettings({ ...settings, reminderSevenDaysEnabled: value })} /><CheckRow label="1 day before booking opens" checked={settings.reminderOneDayEnabled} onChange={(value) => setSettings({ ...settings, reminderOneDayEnabled: value })} /><CheckRow label="When booking opens" checked={settings.reminderBookingOpenEnabled} onChange={(value) => setSettings({ ...settings, reminderBookingOpenEnabled: value })} /></div></Section>
+      <Section title="PNR integration">
+        <div className="grid gap-3 p-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <SecretField
+              name="pnrProviderUrl"
+              label="Provider URL"
+              configured={settings.pnrProviderConfigured}
+              stored={settings.pnrProviderStored}
+              clearName="clearPnrProviderUrl"
+              clearLabel="Remove the saved provider URL"
+              placeholder="https://provider.example/pnr/{pnr}"
+            />
+            <SecretField
+              name="pnrProviderApiKey"
+              label="Provider API key"
+              configured={settings.pnrProviderApiKeyConfigured}
+              stored={settings.pnrProviderApiKeyStored}
+              clearName="clearPnrProviderApiKey"
+              clearLabel="Remove the saved API key"
+              placeholder="Optional API key"
+            />
+          </div>
+          <p className="text-xs text-slate-500">Use <code>{"{pnr}"}</code> in the provider URL, or the app will append the PNR as a query parameter.</p>
+        </div>
+        <div className="border-t border-slate-200"><SettingRow label="Automatic PNR refresh" detail="Refresh tagged booked tickets in the background."><Switch label="Automatic PNR refresh" checked={settings.pnrAutoSyncEnabled} onChange={(value) => setSettings({ ...settings, pnrAutoSyncEnabled: value })} /></SettingRow></div>
+        {settings.pnrAutoSyncEnabled && <div className="border-t border-slate-200 p-3"><NumberField name="pnrSyncIntervalMinutes" label="Refresh interval (minutes)" defaultValue={settings.pnrSyncIntervalMinutes} min={15} max={10080} /></div>}
+        {!settings.pnrAutoSyncEnabled && <input type="hidden" name="pnrSyncIntervalMinutes" value={settings.pnrSyncIntervalMinutes} />}
+      </Section>
+    </div>
     <div className="flex justify-end"><button disabled={busy} className="inline-flex h-9 items-center gap-2 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white disabled:opacity-60"><Save className="h-4 w-4" />{busy ? "Saving..." : "Save settings"}</button></div>
     </form>
     <Section title="Users" action={<button type="button" onClick={() => setInviteOpen(true)} disabled={!settings.smtpConfigured} title={!settings.smtpConfigured ? "Configure SMTP before inviting users" : undefined} className="inline-flex h-8 items-center gap-2 rounded-md bg-slate-950 px-3 text-xs font-semibold text-white disabled:opacity-40"><Plus className="h-4 w-4" />Invite user</button>}><div className="overflow-x-auto"><table className="w-full min-w-[48rem] text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-3 py-2">User</th><th className="px-3 py-2">Role</th><th className="px-3 py-2">Access</th><th className="px-3 py-2 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{users.map((user) => <tr key={user.id}><td className="px-3 py-2"><strong className="block">{user.name ?? "Unnamed user"}</strong><span className="text-xs text-slate-500">{user.email}</span></td><td className="px-3 py-2"><select value={user.role} onChange={(event) => updateUser(user, { role: event.target.value as "ADMIN" | "USER" })} disabled={user.id === currentUserId} className="h-8 rounded-md border border-slate-300 px-2"><option value="USER">User</option><option value="ADMIN">Admin</option></select></td><td className="px-3 py-2"><label className="inline-flex items-center gap-2"><input type="checkbox" checked={user.isActive} disabled={user.id === currentUserId} onChange={(event) => updateUser(user, { isActive: event.target.checked })} />{user.isActive ? "Active" : "Disabled"}</label></td><td className="px-3 py-2 text-right"><button type="button" onClick={() => deleteUser(user)} disabled={user.id === currentUserId} title="Delete user" className="grid h-8 w-8 place-items-center rounded-md border border-red-200 text-red-700 disabled:opacity-30 ml-auto"><Trash2 className="h-4 w-4" /></button></td></tr>)}</tbody></table></div></Section>
@@ -87,4 +124,5 @@ function Switch({ label, checked, onChange }: { label: string; checked: boolean;
 function Channel({ icon: Icon, label, checked, onChange }: { icon: React.ComponentType<{ className?: string }>; label: string; checked: boolean; onChange: (value: boolean) => void }) { return <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm font-medium"><Icon className="h-4 w-4 text-slate-500" />{label}<input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="ml-auto h-4 w-4 accent-slate-950" /></label>; }
 function CheckRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) { return <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="h-4 w-4 accent-slate-950" />{label}</label>; }
 function TextField({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) { return <label className="grid gap-1.5 text-sm font-medium">{label}<input {...props} className="h-10 rounded-md border border-slate-300 px-3" /></label>; }
+function SecretField({ name, label, configured, stored, clearName, clearLabel, placeholder }: { name: string; label: string; configured: boolean; stored: boolean; clearName: string; clearLabel: string; placeholder: string }) { return <div className="grid content-start gap-2"><TextField name={name} type="password" label={label} autoComplete="off" placeholder={configured ? "Configured - enter a value to replace" : placeholder} />{configured && !stored && <span className="text-xs text-slate-500">Configured by the deployment environment.</span>}{stored && <label className="flex items-center gap-2 text-xs text-red-700"><input name={clearName} type="checkbox" />{clearLabel}</label>}</div>; }
 function NumberField({ label, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) { return <label className="grid gap-1.5 text-sm font-medium">{label}<input {...props} type="number" required className="h-10 rounded-md border border-slate-300 px-3" /></label>; }

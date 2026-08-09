@@ -51,11 +51,13 @@ Required environment variables:
 - `APP_ENCRYPTION_KEY`: base64-encoded 32-byte key
 - `CRON_SECRET`
 
-SMTP and Discord values can be entered in Settings and are encrypted before storage. Environment variables remain supported as deployment-level fallbacks.
+SMTP, Discord, and PNR provider values can be entered in Settings and are encrypted before storage. Environment variables remain supported as deployment-level fallbacks.
 
 ## PNR Provider
 
-The app expects a licensed provider endpoint in `PNR_PROVIDER_URL`. Use `{pnr}` in the URL or accept a `pnr` query parameter. Optional authentication uses `PNR_PROVIDER_API_KEY` as both a bearer token and `x-api-key`.
+Administrators can configure a licensed provider endpoint and optional API key under **Settings > PNR integration**. Use `{pnr}` in the URL or accept a `pnr` query parameter. The API key is sent as both a bearer token and `x-api-key`.
+
+`PNR_PROVIDER_URL` and `PNR_PROVIDER_API_KEY` remain available as deployment-level fallbacks. Values saved in Settings take precedence and are encrypted at rest.
 
 Expected response fields can be top-level or under `data`: `trainNumber`, `trainName`, `travelDate`, `class`, source/destination codes and names, current status, coach, seat, and passengers.
 

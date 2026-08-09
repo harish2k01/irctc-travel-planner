@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { ApiError, assertSameOrigin, jsonData, parseJson, routeError } from "@/lib/http";
 import { syncTicketPnr } from "@/lib/pnr-sync";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { getAppSettings } from "@/lib/settings";
+import { getAppSettings, resolvePnrConfiguration } from "@/lib/settings";
 import { serializeTicket, syncReminderSchedules, ticketBookingInstant } from "@/lib/tickets";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -75,7 +75,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     });
 
     let warning: string | undefined;
-    if (nextPnr && process.env.PNR_PROVIDER_URL) {
+    if (nextPnr && resolvePnrConfiguration(settings).providerUrl) {
       try {
         await syncTicketPnr(id, user.id);
       } catch {

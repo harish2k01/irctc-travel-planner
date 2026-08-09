@@ -21,6 +21,8 @@ const settingsSchema = z.object({
   calendarWeekStartsOn: calendarWeekStartsOnSchema.optional(),
   pnrAutoSyncEnabled: z.boolean().optional(),
   pnrSyncIntervalMinutes: z.number().int().min(15).max(10_080).optional(),
+  pnrProviderUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),
+  pnrProviderApiKey: z.union([z.string().trim().max(1_000), z.literal(""), z.null()]).optional(),
   smtpUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),
   emailFrom: z.union([z.string().trim().max(200), z.literal(""), z.null()]).optional(),
   discordWebhookUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),
@@ -42,6 +44,12 @@ export async function PATCH(request: Request) {
     const input = await parseJson(request, settingsSchema);
     const data = {
       ...input,
+      pnrProviderUrl: input.pnrProviderUrl === undefined
+        ? undefined
+        : input.pnrProviderUrl ? encryptSecret(input.pnrProviderUrl) : null,
+      pnrProviderApiKey: input.pnrProviderApiKey === undefined
+        ? undefined
+        : input.pnrProviderApiKey ? encryptSecret(input.pnrProviderApiKey) : null,
       smtpUrl: input.smtpUrl === undefined ? undefined : input.smtpUrl ? encryptSecret(input.smtpUrl) : null,
       discordWebhookUrl: input.discordWebhookUrl === undefined
         ? undefined
