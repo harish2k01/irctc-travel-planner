@@ -161,7 +161,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: ghcr.io/harish2k01/irctc-travel-planner:0.12.2
+          image: ghcr.io/harish2k01/irctc-travel-planner:0.12.3
           imagePullPolicy: Always
           ports:
             - name: http
@@ -281,7 +281,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: migrate
-              image: ghcr.io/harish2k01/irctc-travel-planner:0.12.2
+              image: ghcr.io/harish2k01/irctc-travel-planner:0.12.3
               imagePullPolicy: Always
               command: [npm, run, prisma:migrate:deploy]
               envFrom:
