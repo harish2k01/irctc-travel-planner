@@ -9,7 +9,7 @@ This project is independent and is not affiliated with or endorsed by IRCTC or I
 - Optional PNR tagging; plans can be created before a ticket is booked
 - Per-ticket email, Discord, and in-app reminder channels
 - Persistent reminder delivery with retry and read history
-- Calendar with booking, travel, company leave, and personal leave events
+- Calendar with booking, travel, company leave, and personal leave events, with an administrator-configurable Sunday or Monday week start
 - Ticket-specific leave and booking suggestions, including Saturday/Sunday leave
 - Administrator-controlled signups, invitations, users, delivery settings, and booking timing
 - One-time invitation and password-reset links

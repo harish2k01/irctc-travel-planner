@@ -5,6 +5,8 @@ const stationCode = z.string().trim().min(2).max(16).transform((value) => value.
 const optionalText = (max: number) => z.string().trim().max(max).optional().transform((value) => value || undefined);
 const optionalPnr = z.union([z.string().regex(/^\d{10}$/), z.literal(""), z.null()]).optional();
 
+export const calendarWeekStartsOnSchema = z.union([z.literal(0), z.literal(1)]);
+
 const ticketFields = z.object({
   sourceCode: stationCode,
   sourceName: optionalText(120),

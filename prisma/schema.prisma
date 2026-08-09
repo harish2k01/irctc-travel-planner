@@ -121,6 +121,7 @@ model AppSettings {
   bookingWindowDays          Int      @default(60)
   bookingOpenHour            Int      @default(8)
   bookingOpenMinute          Int      @default(0)
+  calendarWeekStartsOn       Int      @default(0)
   pnrAutoSyncEnabled         Boolean  @default(false)
   pnrSyncIntervalMinutes     Int      @default(360)
   smtpUrl                    String?

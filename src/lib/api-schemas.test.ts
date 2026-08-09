@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTicketSchema, passwordSchema } from "./api-schemas";
+import { calendarWeekStartsOnSchema, createTicketSchema, passwordSchema } from "./api-schemas";
 
 describe("ticket input", () => {
   it("accepts a ticket without a PNR and normalizes station codes", () => {
@@ -20,4 +20,15 @@ describe("ticket input", () => {
 describe("password policy", () => {
   it("accepts a strong password", () => expect(passwordSchema.safeParse("Longer#Password9").success).toBe(true));
   it("rejects weak passwords", () => expect(passwordSchema.safeParse("password123").success).toBe(false));
+});
+
+describe("calendar week start", () => {
+  it("accepts Sunday and Monday", () => {
+    expect(calendarWeekStartsOnSchema.parse(0)).toBe(0);
+    expect(calendarWeekStartsOnSchema.parse(1)).toBe(1);
+  });
+
+  it("rejects unsupported days", () => {
+    expect(calendarWeekStartsOnSchema.safeParse(2).success).toBe(false);
+  });
 });

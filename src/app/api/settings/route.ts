@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { calendarWeekStartsOnSchema } from "@/lib/api-schemas";
 import { writeAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
@@ -17,6 +18,7 @@ const settingsSchema = z.object({
   bookingWindowDays: z.number().int().min(1).max(365).optional(),
   bookingOpenHour: z.number().int().min(0).max(23).optional(),
   bookingOpenMinute: z.number().int().min(0).max(59).optional(),
+  calendarWeekStartsOn: calendarWeekStartsOnSchema.optional(),
   pnrAutoSyncEnabled: z.boolean().optional(),
   pnrSyncIntervalMinutes: z.number().int().min(15).max(10_080).optional(),
   smtpUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),

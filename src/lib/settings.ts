@@ -33,6 +33,7 @@ export function serializeAdminSettings(settings: Awaited<ReturnType<typeof getAp
     bookingWindowDays: settings.bookingWindowDays,
     bookingOpenHour: settings.bookingOpenHour,
     bookingOpenMinute: settings.bookingOpenMinute,
+    calendarWeekStartsOn: settings.calendarWeekStartsOn === 1 ? 1 as const : 0 as const,
     pnrAutoSyncEnabled: settings.pnrAutoSyncEnabled,
     pnrSyncIntervalMinutes: settings.pnrSyncIntervalMinutes,
     smtpConfigured: Boolean(settings.smtpUrl || process.env.SMTP_URL),

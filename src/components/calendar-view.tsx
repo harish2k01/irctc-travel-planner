@@ -5,9 +5,9 @@ import interactionPlugin from "@fullcalendar/interaction";
 import listPlugin from "@fullcalendar/list";
 import FullCalendar from "@fullcalendar/react";
 import timeGridPlugin from "@fullcalendar/timegrid";
-import { X } from "lucide-react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { dateInTimeZone } from "@/lib/dates";
 import { formatDate, formatInstant, routeName } from "@/lib/format";
 import type { Holiday, Ticket } from "@/lib/types";
@@ -16,8 +16,13 @@ type Selection =
   | { kind: "ticket"; ticket: Ticket; event: "booking" | "travel" }
   | { kind: "holiday"; holiday: Holiday };
 
-export function CalendarView({ tickets, holidays, timeZone }: { tickets: Ticket[]; holidays: Holiday[]; timeZone: string }) {
+type CalendarViewName = "dayGridMonth" | "timeGridWeek" | "listMonth";
+
+export function CalendarView({ tickets, holidays, timeZone, weekStartsOn }: { tickets: Ticket[]; holidays: Holiday[]; timeZone: string; weekStartsOn: 0 | 1 }) {
+  const calendarRef = useRef<FullCalendar>(null);
   const [selected, setSelected] = useState<Selection>();
+  const [title, setTitle] = useState("");
+  const [activeView, setActiveView] = useState<CalendarViewName>("dayGridMonth");
   useEffect(() => {
     if (!selected) return;
     const close = (event: KeyboardEvent) => event.key === "Escape" && setSelected(undefined);
@@ -57,6 +62,14 @@ export function CalendarView({ tickets, holidays, timeZone }: { tickets: Ticket[
     })),
   ];
 
+  function navigate(action: "prev" | "next" | "today") {
+    calendarRef.current?.getApi()[action]();
+  }
+
+  function changeView(view: CalendarViewName) {
+    calendarRef.current?.getApi().changeView(view);
+  }
+
   return (
     <section className="calendar-shell rounded-md border border-slate-200 bg-white p-3">
       <div className="mb-2 flex flex-wrap gap-3 text-xs text-slate-600">
@@ -66,18 +79,35 @@ export function CalendarView({ tickets, holidays, timeZone }: { tickets: Ticket[
         <Legend color="bg-slate-600">Company leave</Legend>
         <Legend color="bg-violet-600">Personal leave</Legend>
       </div>
+      <div className="mb-3 grid items-center gap-2 md:grid-cols-[1fr_auto_1fr]">
+        <div className="flex items-center gap-1 justify-self-start">
+          <button type="button" onClick={() => navigate("prev")} title="Previous period" aria-label="Previous period" className="grid h-9 w-9 place-items-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" /></button>
+          <button type="button" onClick={() => navigate("next")} title="Next period" aria-label="Next period" className="grid h-9 w-9 place-items-center rounded-md border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"><ChevronRight className="h-4 w-4" /></button>
+          <button type="button" onClick={() => navigate("today")} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Today</button>
+        </div>
+        <h2 aria-live="polite" className="text-base font-semibold md:text-center">{title}</h2>
+        <div className="inline-flex justify-self-start overflow-hidden rounded-md border border-slate-950 md:justify-self-end" role="group" aria-label="Calendar view">
+          <ViewButton active={activeView === "dayGridMonth"} onClick={() => changeView("dayGridMonth")}>Month</ViewButton>
+          <ViewButton active={activeView === "timeGridWeek"} onClick={() => changeView("timeGridWeek")}>Week</ViewButton>
+          <ViewButton active={activeView === "listMonth"} onClick={() => changeView("listMonth")}>Agenda</ViewButton>
+        </div>
+      </div>
       <FullCalendar
+        ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
         initialView="dayGridMonth"
-        headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,listMonth" }}
-        buttonText={{ today: "Today", month: "Month", week: "Week", list: "Agenda" }}
+        headerToolbar={false}
+        datesSet={(info) => {
+          setTitle(info.view.title);
+          setActiveView(info.view.type as CalendarViewName);
+        }}
         events={events}
         eventClick={(info) => setSelected(info.event.extendedProps as Selection)}
         dayMaxEvents={2}
         fixedWeekCount={false}
         height="auto"
         nowIndicator
-        firstDay={1}
+        firstDay={weekStartsOn}
         eventDisplay="block"
       />
       {selected && (
@@ -110,4 +140,8 @@ export function CalendarView({ tickets, holidays, timeZone }: { tickets: Ticket[
 
 function Legend({ color, children }: { color: string; children: React.ReactNode }) {
   return <span className="inline-flex items-center gap-1.5"><span className={`h-2.5 w-2.5 rounded-sm ${color}`} />{children}</span>;
+}
+
+function ViewButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return <button type="button" onClick={onClick} aria-pressed={active} className={`h-9 px-3 text-sm font-semibold ${active ? "bg-blue-700 text-white" : "bg-slate-950 text-white hover:bg-slate-800"}`}>{children}</button>;
 }
