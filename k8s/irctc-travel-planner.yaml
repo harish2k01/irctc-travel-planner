@@ -161,7 +161,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: web
-          image: ghcr.io/harish2k01/irctc-travel-planner:0.12.0
+          image: ghcr.io/harish2k01/irctc-travel-planner:0.12.1
           imagePullPolicy: Always
           ports:
             - name: http
@@ -281,7 +281,7 @@ spec:
               type: RuntimeDefault
           containers:
             - name: migrate
-              image: ghcr.io/harish2k01/irctc-travel-planner:0.12.0
+              image: ghcr.io/harish2k01/irctc-travel-planner:0.12.1
               imagePullPolicy: Always
               command: [npm, run, prisma:migrate:deploy]
               envFrom:
@@ -411,7 +411,7 @@ spec:
               envFrom:
                 - secretRef:
                     name: irctc-travel-planner-secrets
-              command: [sh, -c, 'set -eu; pg_dump -h irctc-travel-planner-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "/backups/irctc-$(date +%Y%m%d-%H%M%S).dump"; find /backups -type f -mtime +14 -delete']
+              command: [sh, -c, 'set -eu; export PGPASSWORD="$POSTGRES_PASSWORD"; pg_dump -h irctc-travel-planner-postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f "/backups/irctc-$(date +%Y%m%d-%H%M%S).dump"; find /backups -type f -mtime +14 -delete']
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities:
