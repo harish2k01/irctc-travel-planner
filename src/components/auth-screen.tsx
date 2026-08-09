@@ -1,6 +1,7 @@
 "use client";
 
 import { Lock, Mail, TrainFront, UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 type AuthMode = "firstSignup" | "login" | "resetPassword" | "tokenPassword" | "missingDatabase";
@@ -11,6 +12,7 @@ function errorMessage(payload: unknown) {
 }
 
 export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: AuthMode; allowSignups: boolean; token?: string; tokenType?: "invitation" | "reset" }) {
+  const router = useRouter();
   const [view, setView] = useState<"login" | "signup" | "reset" | "forgot">(
     mode === "firstSignup" ? "signup" : mode === "resetPassword" || mode === "tokenPassword" ? "reset" : "login",
   );
@@ -26,7 +28,8 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(errorMessage(data));
-      window.location.assign("/");
+      router.replace("/");
+      router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "The request could not be completed.");
     } finally {

@@ -2,7 +2,7 @@
 
 import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, Home, LogOut, MapPin, Menu, Plus, Settings, Ticket, TrainFront, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { AuthUser } from "@/lib/auth";
 import { apiRequest } from "@/lib/client-api";
@@ -20,6 +20,7 @@ const navigation = [
 
 export function AppShell({ user, children }: { user: AuthUser; children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const active = navigation.find((item) => pathname.startsWith(item.href));
@@ -38,7 +39,8 @@ export function AppShell({ user, children }: { user: AuthUser; children: React.R
 
   async function logout() {
     await apiRequest("/api/auth/logout", { method: "POST" });
-    window.location.assign("/");
+    router.replace("/");
+    router.refresh();
   }
 
   return (
