@@ -251,7 +251,7 @@ jobs:
           name: release-notes
           path: ${{ runner.temp }}
       - name: Create GitHub release
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           TAG: ${{ needs.version.outputs.tag }}
           TARGET_SHA: ${{ github.sha }}
