@@ -1,7 +1,6 @@
-import { PlannerForm } from "@/components/planner-form";
-import { getAppSettings } from "@/lib/settings";
-
-export default async function PlannerPage() {
-  const settings = await getAppSettings();
-  return <PlannerForm channels={{ email: settings.reminderEmailEnabled, discord: settings.reminderDiscordEnabled, inApp: settings.reminderInAppEnabled }} bookingWindowDays={settings.bookingWindowDays} />;
+import { redirect } from "next/navigation";
+export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const params = await searchParams;
+  const trip = typeof params.trip === "string" ? params.trip : typeof params.ticket === "string" ? params.ticket : undefined;
+  redirect("/trips" + (trip ? "?trip=" + encodeURIComponent(trip) : ""));
 }

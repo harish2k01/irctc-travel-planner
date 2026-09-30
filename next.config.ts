@@ -11,10 +11,18 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  devIndicators: false,
   poweredByHeader: false,
   compress: true,
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    const headers = [{ source: "/:path*", headers: securityHeaders }];
+    // React's development debugger needs eval; never relax the production CSP.
+    if (process.env.NODE_ENV === "development") {
+      headers.push({ source: "/:path*", headers: securityHeaders.map((header) => header.key === "Content-Security-Policy"
+        ? { ...header, value: header.value.replace("script-src 'self' 'unsafe-inline'", "script-src 'self' 'unsafe-inline' 'unsafe-eval'") }
+        : header) });
+    }
+    return headers;
   },
 };
 

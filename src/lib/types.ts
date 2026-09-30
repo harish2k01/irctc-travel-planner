@@ -30,6 +30,8 @@ export type Ticket = {
   reminderDiscordEnabled: boolean;
   reminderInAppEnabled: boolean;
   version: number;
+  journeyGroupId?: string;
+  pnrLastError?: string;
   pnrSnapshot?: PnrSnapshot;
 };
 

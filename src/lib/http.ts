@@ -44,7 +44,9 @@ export async function parseJson<T>(request: Request, schema: ZodType<T>, maxByte
 }
 
 export function jsonData<T>(data: T, init?: ResponseInit) {
-  return NextResponse.json({ data }, init);
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "private, no-store, max-age=0");
+  return NextResponse.json({ data }, { ...init, headers });
 }
 
 export function routeError(error: unknown, request?: Request) {

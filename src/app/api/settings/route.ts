@@ -3,6 +3,7 @@ import { calendarWeekStartsOnSchema } from "@/lib/api-schemas";
 import { writeAudit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
+import { discordUrlSchema } from "@/lib/delivery";
 import { prisma } from "@/lib/db";
 import { assertSameOrigin, jsonData, parseJson, routeError } from "@/lib/http";
 import { getAppSettings, serializeAdminSettings } from "@/lib/settings";
@@ -25,7 +26,7 @@ const settingsSchema = z.object({
   pnrProviderApiKey: z.union([z.string().trim().max(1_000), z.literal(""), z.null()]).optional(),
   smtpUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),
   emailFrom: z.union([z.string().trim().max(200), z.literal(""), z.null()]).optional(),
-  discordWebhookUrl: z.union([z.string().url().max(1_000), z.literal(""), z.null()]).optional(),
+  discordWebhookUrl: z.union([discordUrlSchema, z.literal(""), z.null()]).optional(),
 });
 
 export async function GET(request: Request) {

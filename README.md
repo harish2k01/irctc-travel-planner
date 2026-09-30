@@ -6,14 +6,17 @@ This project is independent and is not affiliated with or endorsed by IRCTC or I
 
 ## Capabilities
 
+- Authenticated Today, Trips, Calendar and Settings workspace backed by PostgreSQL; no sample-data mode
+- Linked outbound/return plans, server-side search and pagination, and a separate trip history
+- Explicit booking completion without requiring a PNR; removing a PNR does not undo a booking
 - Optional PNR tagging; plans can be created before a ticket is booked
 - Per-ticket email, Discord, and in-app reminder channels
-- Persistent reminder delivery with retry and read history
+- Revisioned reminder schedules, recoverable worker leases, bounded retries, read state and snooze
 - Calendar with booking, travel, company leave, and personal leave events, with an administrator-configurable Sunday or Monday week start
 - Ticket-specific leave and booking suggestions, including Saturday/Sunday leave
 - Administrator-controlled signups, invitations, users, delivery settings, and booking timing
 - One-time invitation and password-reset links
-- Encrypted PNR, SMTP, and Discord values at rest
+- Encrypted PNR, SMTP, and private per-user Discord values at rest
 - PostgreSQL migrations, health endpoints, audit records, rate limits, and worker endpoints
 
 ## Technology
@@ -75,7 +78,15 @@ npm run build
 npm audit
 ```
 
-`npm run verify` runs the complete local quality gate.
+`npm run verify` runs the static, unit-test and build checks. Database and browser checks additionally require a disposable database whose name ends in `_test`:
+
+```bash
+RUN_DB_TESTS=1 npm run test:coverage
+npx playwright install chromium
+RUN_E2E=1 npm run test:e2e
+```
+
+The browser suite resets that disposable database. It launches the built standalone application and tests real authenticated APIs, trip edits, ownership, reminders, imports, and responsive layouts. Never use a live database. Both pull-request and release CI run these checks with an isolated PostgreSQL service.
 
 ## Releases
 
@@ -93,6 +104,8 @@ The release workflow verifies the source before publishing a versioned GHCR imag
 The canonical manifest is [k8s/irctc-travel-planner.yaml](k8s/irctc-travel-planner.yaml). It includes the web deployment, PostgreSQL StatefulSet, migration template, reminder and PNR workers, backup job, HPA, PDB, network policies, health probes, Service, and Traefik Gateway API `HTTPRoute` for `irctc-travel-planner.k8s.harish2k01.xyz`.
 
 Secret creation and migration instructions are in [k8s/README.md](k8s/README.md). Keep database backups off-cluster as part of the recovery plan.
+
+The redesign changes reminder uniqueness and requires a coordinated worker/app cutover. See [workspace release notes](docs/live-workspace-release.md) before upgrading from 0.14.x.
 
 ## Security and Privacy
 

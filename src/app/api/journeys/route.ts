@@ -5,6 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth";
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
+import { todayInTimeZone } from "@/lib/dates";
 import { ApiError, assertSameOrigin, noStoreHeaders, parseJson, routeError } from "@/lib/http";
 import { syncTicketPnr } from "@/lib/pnr-sync";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
     const user = await requireUser();
     const url = new URL(request.url);
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 50)));
+    if (!Number.isInteger(limit)) throw new ApiError(400, "Invalid page size.", "VALIDATION_ERROR");
     const cursor = url.searchParams.get("cursor") ?? undefined;
     const status = url.searchParams.get("status");
     if (status && !["PLANNED", "BOOKED", "ARCHIVED"].includes(status)) {
@@ -47,6 +49,7 @@ export async function POST(request: Request) {
     await enforceRateLimit(request, "ticket:create", 30, 60_000, user.id);
     const input = await parseJson(request, createTicketSchema);
     const settings = await getAppSettings();
+    if (input.travelDate < todayInTimeZone()) throw new ApiError(400, "Choose today or a future travel date.", "VALIDATION_ERROR");
     const pnr = typeof input.pnr === "string" && input.pnr ? input.pnr : undefined;
     const bookingOpensAt = ticketBookingInstant({
       travelDate: input.travelDate,
@@ -57,10 +60,12 @@ export async function POST(request: Request) {
     });
 
     const ticket = await prisma.$transaction(async (tx) => {
+      const journeyGroupId = input.returnDate ? randomUUID() : undefined;
       const created = await tx.ticketPlan.create({
         data: {
           id: randomUUID(),
           userId: user.id,
+          journeyGroupId,
           sourceCode: input.sourceCode,
           sourceName: input.sourceName,
           destinationCode: input.destinationCode,
@@ -77,6 +82,19 @@ export async function POST(request: Request) {
         },
       });
       await syncReminderSchedules(tx, created, settings);
+      if (input.returnDate) {
+        const returning = await tx.ticketPlan.create({ data: {
+          id: randomUUID(), userId: user.id, journeyGroupId,
+          sourceCode: input.destinationCode, sourceName: input.destinationName,
+          destinationCode: input.sourceCode, destinationName: input.sourceName,
+          travelDate: new Date(`${input.returnDate}T00:00:00.000Z`),
+          bookingOpensAt: ticketBookingInstant({ travelDate: input.returnDate, ...settings, timeZone: "Asia/Kolkata" }),
+          reminderEmailEnabled: created.reminderEmailEnabled,
+          reminderDiscordEnabled: created.reminderDiscordEnabled,
+          reminderInAppEnabled: created.reminderInAppEnabled,
+        } });
+        await syncReminderSchedules(tx, returning, settings);
+      }
       return created;
     });
 

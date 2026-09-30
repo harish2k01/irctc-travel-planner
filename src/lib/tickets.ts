@@ -23,6 +23,8 @@ export function serializeTicket(ticket: TicketWithSnapshot): Ticket {
     reminderDiscordEnabled: ticket.reminderDiscordEnabled,
     reminderInAppEnabled: ticket.reminderInAppEnabled,
     version: ticket.version,
+    journeyGroupId: ticket.journeyGroupId ?? undefined,
+    pnrLastError: ticket.pnrLastError ?? undefined,
     pnrSnapshot: ticket.pnrSnapshot ? {
       trainNumber: ticket.pnrSnapshot.trainNumber ?? undefined,
       trainName: ticket.pnrSnapshot.trainName ?? undefined,
@@ -47,7 +49,7 @@ export function ticketBookingInstant(input: {
     input.bookingWindowDays,
     input.bookingOpenHour,
     input.bookingOpenMinute,
-    input.timeZone,
+    "Asia/Kolkata",
   );
 }
 
@@ -68,7 +70,32 @@ export async function syncReminderSchedules(
     reminderBookingOpenEnabled: boolean;
   },
 ) {
+  const now = new Date();
+  const active = await tx.reminderSchedule.findMany({ where: { ticketId: ticket.id, cancelledAt: null } });
+  const times = reminderInstants(ticket.bookingOpensAt);
   const enabledChannel = ticket.reminderEmailEnabled || ticket.reminderDiscordEnabled || ticket.reminderInAppEnabled;
+  // Channel/notes edits must not resend an opening notification already delivered.
+  if (ticket.status === "PLANNED" && ticket.remindersEnabled && enabledChannel && active.length
+    && active.every((schedule) => schedule.dueAt.getTime() === times[schedule.type].getTime())) {
+    const disabled = [!ticket.reminderEmailEnabled && "EMAIL", !ticket.reminderDiscordEnabled && "DISCORD", !ticket.reminderInAppEnabled && "IN_APP"].filter(Boolean) as ("EMAIL" | "DISCORD" | "IN_APP")[];
+    await tx.reminderDelivery.updateMany({
+      where: { schedule: { ticketId: ticket.id }, channel: { in: disabled }, status: { in: ["PENDING", "FAILED", "SENDING"] } },
+      data: { status: "CANCELLED", nextAttemptAt: null, leaseToken: null, leaseExpiresAt: null },
+    });
+    return;
+  }
+  await tx.reminderSchedule.updateMany({
+    where: { ticketId: ticket.id, cancelledAt: null },
+    data: { cancelledAt: now, processedAt: now },
+  });
+  await tx.reminderDelivery.updateMany({
+    where: { schedule: { ticketId: ticket.id }, status: { in: ["PENDING", "FAILED", "SENDING"] } },
+    data: { status: "CANCELLED", nextAttemptAt: null, leaseToken: null, leaseExpiresAt: null },
+  });
+  const { scheduleRevision } = await tx.ticketPlan.update({
+    where: { id: ticket.id }, data: { scheduleRevision: { increment: 1 } },
+    select: { scheduleRevision: true },
+  });
   if (ticket.status !== "PLANNED" || !ticket.remindersEnabled || !enabledChannel) {
     await tx.reminderSchedule.updateMany({
       where: { ticketId: ticket.id, processedAt: null },
@@ -77,7 +104,6 @@ export async function syncReminderSchedules(
     return;
   }
 
-  const times = reminderInstants(ticket.bookingOpensAt);
   const enabled = [
     ["SEVEN_DAYS_BEFORE", settings.reminderSevenDaysEnabled],
     ["ONE_DAY_BEFORE", settings.reminderOneDayEnabled],
@@ -94,10 +120,8 @@ export async function syncReminderSchedules(
 
   for (const [type, isEnabled] of enabled) {
     if (!isEnabled) continue;
-    await tx.reminderSchedule.upsert({
-      where: { ticketId_type: { ticketId: ticket.id, type } },
-      update: { dueAt: times[type], processedAt: null },
-      create: { id: randomUUID(), ticketId: ticket.id, type, dueAt: times[type] },
+    await tx.reminderSchedule.create({
+      data: { id: randomUUID(), ticketId: ticket.id, revision: scheduleRevision, type, dueAt: times[type] },
     });
   }
 }

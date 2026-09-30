@@ -2,5 +2,10 @@ node_modules
 .next
 .git
 npm-debug.log
-.env
+.env*
+!.env.example
+build
+test-results
+playwright-report
+*.dump
 coverage

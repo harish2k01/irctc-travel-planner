@@ -9,7 +9,7 @@ export function buildTravelSuggestions(tickets: Ticket[], holidays: Holiday[], t
   const suggestions: TravelSuggestion[] = [];
   const holidayByDate = new Map(holidays.map((holiday) => [holiday.date, holiday]));
 
-  for (const ticket of tickets.filter((item) => item.status === "PLANNED")) {
+  for (const ticket of tickets.filter((item) => item.status === "PLANNED" && item.travelDate >= today)) {
     const route = `${ticket.sourceCode} to ${ticket.destinationCode}`;
     const bookingDate = dateInTimeZone(ticket.bookingOpensAt, timeZone);
     const days = daysBetween(today, bookingDate);
@@ -22,10 +22,10 @@ export function buildTravelSuggestions(tickets: Ticket[], holidays: Holiday[], t
     });
 
     const bookingWeekday = new Date(`${bookingDate}T12:00:00.000Z`).getUTCDay();
-    if (weekendDays.includes(bookingWeekday)) suggestions.push({
+    if (days >= 0 && days <= 14 && weekendDays.includes(bookingWeekday)) suggestions.push({
       id: `weekend:${ticket.id}`,
       title: "Booking opens on a leave day",
-      detail: `${route} opens on ${formatDate(bookingDate)}, which is one of your default leave days.`,
+      detail: `${route} for travel on ${formatDate(ticket.travelDate)} opens on ${formatDate(bookingDate)}, one of your days off.`,
       tone: "amber",
       ticketId: ticket.id,
     });
@@ -54,7 +54,7 @@ export function buildTravelSuggestions(tickets: Ticket[], holidays: Holiday[], t
 
   for (const holiday of holidays) {
     const weekday = new Date(`${holiday.date}T12:00:00.000Z`).getUTCDay();
-    if (weekday === 1 || weekday === 5) suggestions.push({
+    if (holiday.date >= today && weekendDays.includes(0) && weekendDays.includes(6) && (weekday === 1 || weekday === 5)) suggestions.push({
       id: `long-weekend:${holiday.id}`,
       title: weekday === 1 ? "Monday long weekend" : "Friday long weekend",
       detail: `${holiday.name} on ${formatDate(holiday.date)} extends your Saturday-Sunday leave block.`,
@@ -63,7 +63,7 @@ export function buildTravelSuggestions(tickets: Ticket[], holidays: Holiday[], t
   }
 
   const bookingGroups = new Map<string, Ticket[]>();
-  for (const ticket of tickets.filter((item) => item.status === "PLANNED")) {
+  for (const ticket of tickets.filter((item) => item.status === "PLANNED" && item.travelDate >= today && dateInTimeZone(item.bookingOpensAt, timeZone) >= today)) {
     const date = dateInTimeZone(ticket.bookingOpensAt, timeZone);
     bookingGroups.set(date, [...(bookingGroups.get(date) ?? []), ticket]);
   }

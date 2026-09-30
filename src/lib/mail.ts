@@ -8,7 +8,8 @@ function appUrl() {
 async function send(to: string, subject: string, text: string) {
   const config = await getDeliveryConfiguration();
   if (!config.smtpUrl) return { sent: false as const, reason: "Email delivery is not configured." };
-  const transporter = nodemailer.createTransport(config.smtpUrl, {
+  const transporter = nodemailer.createTransport({
+    url: config.smtpUrl,
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
@@ -39,7 +40,7 @@ export function sendPasswordResetEmail(email: string, token: string) {
   ].join("\n"));
 }
 
-export function sendReminderEmail(input: { email: string; route: string; travelDate: string; bookingDate: string; message: string }) {
+export function sendReminderEmail(input: { email: string; route: string; travelDate: string; bookingDate: string; message: string; ticketId?: string }) {
   return send(input.email, `Booking reminder: ${input.route}`, [
     input.message,
     "",
@@ -47,6 +48,10 @@ export function sendReminderEmail(input: { email: string; route: string; travelD
     `Travel date: ${input.travelDate}`,
     `Booking date: ${input.bookingDate}`,
     "",
-    `${appUrl()}/tracker`,
+    `${appUrl()}/trips${input.ticketId ? `?trip=${encodeURIComponent(input.ticketId)}` : ""}`,
   ].join("\n"));
+}
+
+export function sendTestEmail(email: string) {
+  return send(email, "Test reminder", "Email delivery is working for your IRCTC Travel Planner account.");
 }

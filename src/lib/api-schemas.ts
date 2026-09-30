@@ -1,8 +1,11 @@
 import { z } from "zod";
 
-const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date.");
+export const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date.").refine((value) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, "Use a real calendar date.");
 const stationCode = z.string().trim().min(2).max(16).transform((value) => value.toUpperCase());
-const optionalText = (max: number) => z.string().trim().max(max).optional().transform((value) => value || undefined);
+const optionalText = (max: number) => z.string().trim().max(max).optional();
 const optionalPnr = z.union([z.string().regex(/^\d{10}$/), z.literal(""), z.null()]).optional();
 
 export const calendarWeekStartsOnSchema = z.union([z.literal(0), z.literal(1)]);
@@ -20,7 +23,9 @@ const ticketFields = z.object({
   reminderInAppEnabled: z.boolean().optional(),
 });
 
-export const createTicketSchema = ticketFields.refine((value) => value.sourceCode !== value.destinationCode, {
+export const createTicketSchema = ticketFields.extend({ returnDate: dateOnly.optional() }).refine((value) => !value.returnDate || value.returnDate >= value.travelDate, {
+  path: ["returnDate"], message: "Return date must be on or after the outbound date.",
+}).refine((value) => value.sourceCode !== value.destinationCode, {
   path: ["destinationCode"],
   message: "Source and destination must be different.",
 });

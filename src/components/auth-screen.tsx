@@ -3,6 +3,7 @@
 import { Lock, Mail, TrainFront, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import s from "@/components/workspace/workspace.module.css";
 
 type AuthMode = "firstSignup" | "login" | "resetPassword" | "tokenPassword" | "missingDatabase";
 
@@ -108,9 +109,9 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
 
 function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-50 px-4 py-8">
-      <section className="w-full max-w-sm rounded-md border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="mb-5 flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-md bg-slate-950 text-white"><TrainFront className="h-5 w-5" /></div><div><h1 className="text-lg font-semibold">IRCTC Travel Planner</h1><p className="text-sm text-slate-500">Ticket tracker</p></div></div>
+    <main className={`${s.root} ${s.authPage}`}>
+      <section className={s.authCard}>
+        <div className={s.authBrand}><div className={s.brandMark}><TrainFront size={22} /></div><div><h1>IRCTC Travel Planner</h1><p>Ticket tracker</p></div></div>
         <div className="grid gap-3">{children}</div>
         <p className="mt-5 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">Independent ticket planning tool. Not affiliated with or endorsed by IRCTC or Indian Railways.</p>
       </section>
@@ -119,9 +120,9 @@ function AuthShell({ children }: { children: React.ReactNode }) {
 }
 
 function Field({ icon: Icon, label, ...input }: { icon: React.ComponentType<{ className?: string }>; label: string; name: string; type?: string; autoComplete?: string }) {
-  return <label className="grid gap-1.5 text-sm font-medium text-slate-700">{label}<span className="flex h-10 items-center gap-2 rounded-md border border-slate-300 px-3 focus-within:border-slate-500 focus-within:ring-2 focus-within:ring-slate-200"><Icon className="h-4 w-4 text-slate-400" /><input required {...input} className="min-w-0 flex-1 bg-transparent outline-none" /></span></label>;
+  return <label className={s.field}>{label}<span className={s.authInput}><Icon className="h-4 w-4" /><input required {...input} /></span></label>;
 }
 
 function Primary({ busy, disabled, children }: { busy: boolean; disabled?: boolean; children: React.ReactNode }) {
-  return <button disabled={busy || disabled} className="mt-1 h-10 rounded-md bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">{busy ? "Please wait..." : children}</button>;
+  return <button disabled={busy || disabled} className={`${s.button} ${s.primary}`}>{busy ? "Please wait..." : children}</button>;
 }

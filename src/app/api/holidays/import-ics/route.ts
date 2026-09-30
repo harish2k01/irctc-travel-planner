@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { createHolidaySchema } from "@/lib/api-schemas";
+import { writeAudit } from "@/lib/audit";
 import { ApiError, assertSameOrigin, jsonData, parseJson, routeError } from "@/lib/http";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { fetchExternal, limitedResponseText, validateExternalUrl } from "@/lib/safe-fetch";
@@ -8,7 +11,9 @@ import type { HolidayType } from "@/lib/types";
 const schema = z.object({
   url: z.string().url().optional(),
   icsText: z.string().min(1).max(1_000_000).optional(),
-}).refine((value) => Boolean(value.url || value.icsText), "Provide an ICS URL or file content.");
+  save: z.boolean().default(false),
+  holidays: z.array(createHolidaySchema).min(1).max(500).optional(),
+}).refine((value) => Boolean(value.url || value.icsText || value.holidays), "Provide an ICS URL or file content.");
 
 export async function POST(request: Request) {
   try {
@@ -22,7 +27,21 @@ export async function POST(request: Request) {
       if (!response.ok) throw new ApiError(400, "The calendar could not be downloaded.", "ICS_FETCH_FAILED");
       content = await limitedResponseText(response);
     }
-    return jsonData(parseIcsHolidays(content ?? ""));
+    const holidays = input.holidays ?? z.array(createHolidaySchema).min(1, "No valid leave dates found.").max(500).parse(parseIcsHolidays(content ?? ""));
+    if (!input.save) return jsonData(holidays);
+    const added = await prisma.$transaction(async (tx) => {
+      // Serialize imports for this owner so repeated submissions are idempotent.
+      await tx.$executeRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;
+      const existing = await tx.holiday.findMany({ where: { userId: user.id }, select: { name: true, date: true, type: true } });
+      const key = (row: { name: string; date: string }) => JSON.stringify([row.name, row.date]);
+      const seen = new Set(existing.map((row) => key({ ...row, date: row.date.toISOString().slice(0, 10) })));
+      const rows = holidays.filter((row) => { const value = key(row); if (seen.has(value)) return false; seen.add(value); return true; });
+      if (!rows.length) return 0;
+      const inserted = await tx.holiday.createMany({ data: rows.map((row) => ({ ...row, userId: user.id, date: new Date(`${row.date}T00:00:00.000Z`) })), skipDuplicates: true });
+      return inserted.count;
+    });
+    await writeAudit({ actorId: user.id, action: "holiday.imported", targetType: "Holiday", request, metadata: { added } });
+    return jsonData({ added });
   } catch (error) {
     return routeError(error, request);
   }

@@ -13,6 +13,10 @@ PNR provider credentials can be encrypted and stored from the app's Settings pag
 
 Run the suspended migration CronJob as a one-off Job before rolling out a new application image:
 
+For the live-workspace migration, first suspend both workers and stop the old web
+writers. The schedule uniqueness change is not compatible with old writers.
+Follow [the coordinated upgrade procedure](../docs/live-workspace-release.md).
+
 ```sh
 kubectl -n irctc-travel-planner create job --from=cronjob/irctc-travel-planner-db-migrate irctc-travel-planner-migrate-<version>
 ```

@@ -4,11 +4,8 @@ import { prisma } from "@/lib/db";
 const SETTINGS_ID = "global";
 
 export async function getAppSettings() {
-  return prisma.appSettings.upsert({
-    where: { id: SETTINGS_ID },
-    update: {},
-    create: { id: SETTINGS_ID },
-  });
+  await prisma.appSettings.createMany({ data: [{ id: SETTINGS_ID }], skipDuplicates: true });
+  return prisma.appSettings.findUniqueOrThrow({ where: { id: SETTINGS_ID } });
 }
 
 export async function getDeliveryConfiguration() {

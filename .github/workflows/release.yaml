@@ -18,6 +18,27 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-ci-only
+          POSTGRES_DB: irctc_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:local-ci-only@127.0.0.1:5432/irctc_ci_test
+      APP_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      CRON_SECRET: local-ci-worker-secret
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3102
+      RUN_DB_TESTS: "1"
+      RUN_E2E: "1"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -27,10 +48,19 @@ jobs:
       - run: npm ci
       - run: npm audit --audit-level=high
       - run: npm run prisma:generate
+      - run: npm run prisma:migrate:deploy
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:coverage
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: browser-verification
+          path: build/workspace-qa
+          retention-days: 7
 
   version:
     needs: verify

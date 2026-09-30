@@ -16,16 +16,21 @@ export async function POST(request: Request) {
     assertSameOrigin(request);
     await enforceRateLimit(request, "auth:signup", 5, 60 * 60_000);
     const input = await parseJson(request, schema, 8_192);
-    const [userCount, settings] = await Promise.all([prisma.user.count(), getAppSettings()]);
-    if (userCount > 0 && !settings.allowSignups) throw new ApiError(403, "Public signups are disabled.", "SIGNUPS_DISABLED");
-    const user = await prisma.user.create({
+    await getAppSettings();
+    const passwordHash = await hashPassword(input.password);
+    const user = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(846215)`;
+      const userCount = await tx.user.count();
+      const settings = await tx.appSettings.findUniqueOrThrow({ where: { id: "global" } });
+      if (userCount > 0 && !settings.allowSignups) throw new ApiError(403, "Public signups are disabled.", "SIGNUPS_DISABLED");
+      return tx.user.create({
       data: {
         email: input.email.toLowerCase(),
         name: input.name,
-        passwordHash: await hashPassword(input.password),
+        passwordHash,
         role: userCount === 0 ? "ADMIN" : "USER",
-        emailVerifiedAt: new Date(),
       },
+      });
     });
     await createSession(user.id, request);
     await writeAudit({ actorId: user.id, action: "user.signed_up", targetType: "User", targetId: user.id, request });
