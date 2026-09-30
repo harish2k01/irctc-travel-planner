@@ -15,7 +15,7 @@ const normalizedSchema = z.object({
   providerStatus: z.string().max(120).optional(),
   coach: z.string().max(20).optional(),
   seat: z.string().max(40).optional(),
-});
+}).refine((value) => Object.values(value).some((field) => Boolean(field)), "No PNR details were returned.");
 
 export type PnrProviderResult = z.infer<typeof normalizedSchema>;
 
@@ -39,6 +39,12 @@ function dateOnly(value: unknown) {
 export function normalizePnrPayload(payload: unknown): PnrProviderResult {
   const root = object(payload);
   const data = object(root.data ?? root.result ?? root);
+  for (const envelope of [root, data]) {
+    if (envelope.success === false || envelope.status === false || Boolean(envelope.error)
+      || ["error", "failed", "failure", "invalid pnr", "pnr not found"].includes(text(envelope.status)?.toLowerCase() ?? "")) {
+      throw new ApiError(502, "The PNR provider could not find valid ticket details.", "PNR_PROVIDER_INVALID_RESPONSE");
+    }
+  }
   const train = object(data.train);
   const boarding = object(data.boardingStation ?? data.fromStation);
   const destination = object(data.destinationStation ?? data.toStation);

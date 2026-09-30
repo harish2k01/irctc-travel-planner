@@ -18,4 +18,12 @@ describe("PNR provider normalization", () => {
   it("does not invent unavailable train details", () => {
     expect(normalizePnrPayload({ status: "Chart not prepared" })).toEqual({ providerStatus: "Chart not prepared" });
   });
+
+  it.each([{}, null, { data: {} }, { message: "No ticket found" }])("rejects an empty lookup result: %j", (payload) => {
+    expect(() => normalizePnrPayload(payload)).toThrow("No PNR details were returned.");
+  });
+
+  it.each([{ success: false, data: { trainNumber: "12624" } }, { status: "error" }, { error: "Sensitive provider message" }, { data: { status: "PNR not found" } }])("rejects provider failures without exposing their message: %j", (payload) => {
+    expect(() => normalizePnrPayload(payload)).toThrow("The PNR provider could not find valid ticket details.");
+  });
 });
