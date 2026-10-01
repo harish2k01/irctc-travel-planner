@@ -90,7 +90,7 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
           <Field icon={Mail} name="email" type="email" label="Email" autoComplete="email" />
           <Field icon={Lock} name="password" type="password" label="Password" autoComplete="new-password" />
           <p className="text-xs leading-5 text-slate-500">Use at least 12 characters with uppercase, lowercase, number, and symbol.</p>
-          <Primary busy={busy}>{mode === "firstSignup" ? "Create administrator" : "Create account"}</Primary>
+          <Primary busy={busy}>Create</Primary>
           {mode !== "firstSignup" && <button type="button" onClick={() => setView("login")} className="text-sm font-medium text-blue-700">Back to sign in</button>}
         </form>
       )}

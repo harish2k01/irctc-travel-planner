@@ -19,7 +19,7 @@ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata'}).format(ne
 try{
   assert.equal((await probe(b,'/api/railplan/workspace')).status(),401);
   for(const path of ['/rebuild','/design-preview','/today','/trips','/api/journeys','/api/internal/pnr-sync'])assert.equal((await b.request.get(url+path)).status(),404,'Retired route '+path);
-  await page.goto(url);await page.getByLabel('Name',{exact:true}).fill('Railplan test');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Create administrator',exact:true}).click();await expect(page).toHaveURL(url+'/railplan');await signup(b,`other-${randomUUID()}@example.invalid`);
+  await page.goto(url);await page.getByLabel('Name',{exact:true}).fill('Railplan test');await page.getByLabel('Email',{exact:true}).fill(email);await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Create',exact:true}).click();await expect(page).toHaveURL(url+'/railplan');await signup(b,`other-${randomUUID()}@example.invalid`);
   await page.goto(`${url}/railplan`);await page.getByRole('heading',{name:'Your travel, in view'}).waitFor();
   await nav('New journey');const dialog=()=>page.getByRole('dialog');await dialog().getByLabel('From',{exact:true}).fill('Madurai');await dialog().getByLabel('To',{exact:true}).fill('Chennai');await dialog().getByLabel('Travel date').fill(date);await dialog().getByRole('button',{name:'Save journey',exact:true}).click();await expect(dialog()).toHaveCount(0);await page.getByRole('status').filter({hasText:'Journey saved'}).waitFor();
   assert.equal(await page.evaluate(()=>localStorage.getItem('railplan.rebuild.v1')),null);
