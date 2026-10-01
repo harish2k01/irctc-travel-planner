@@ -10,7 +10,7 @@ const releases = (await allPages("releases")).filter(
 );
 releases.sort((a, b) => compareVersions(a.tag_name, b.tag_name));
 const latest = releases.at(-1);
-const head = git("rev-parse", "origin/main");
+const head = git("rev-parse", "HEAD");
 if (latest) git("merge-base", "--is-ancestor", latest.tag_name, head);
 const commits = git(
   "rev-list",
