@@ -1,0 +1,86 @@
+name: Publish released Railplan
+on:
+  workflow_call:
+    inputs:
+      tag: { required: true, type: string }
+      sha: { required: true, type: string }
+permissions:
+  contents: write
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify immutable release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$RELEASE_SHA"
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check for an already published commit image
+        id: existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect "$IMAGE:sha-$RELEASE_SHA" --format '{{json .Manifest}}' > existing.json 2> inspect-error.txt; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$(jq -r .digest existing.json)" >> "$GITHUB_OUTPUT"
+          elif grep -Eiq 'manifest unknown|not found|name unknown' inspect-error.txt; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            cat inspect-error.txt >&2
+            exit 1
+          fi
+      - name: Build and push exact release commit
+        id: build
+        if: steps.existing.outputs.found != 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          build-args: APP_VERSION=${{ inputs.tag }}
+          tags: ${{ env.IMAGE }}:sha-${{ inputs.sha }}
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=Railplan
+            org.opencontainers.image.version=${{ inputs.tag }}
+            org.opencontainers.image.revision=${{ inputs.sha }}
+      - name: Promote semantic aliases and record immutable image
+        env:
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="${EXISTING_DIGEST:-$BUILD_DIGEST}"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker buildx imagetools create -t "$IMAGE:$RELEASE_TAG" -t "$IMAGE:$VERSION" "$IMAGE@$digest"
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          if [ "$latest" = "$RELEASE_TAG" ]; then
+            docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE@$digest"
+          fi
+          jq -n --arg tag "$RELEASE_TAG" --arg sha "$RELEASE_SHA" --arg image "$IMAGE" --arg digest "$digest" '{tag:$tag,sha:$sha,image:$image,digest:$digest,reference:($image+"@"+$digest)}' > image.json
+          gh release upload "$RELEASE_TAG" image.json --clobber --repo "$GITHUB_REPOSITORY"
+          echo "Published $IMAGE@$digest ($RELEASE_TAG)" >> "$GITHUB_STEP_SUMMARY"

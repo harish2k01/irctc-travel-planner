@@ -37,5 +37,18 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  worker:
+    build: .
+    environment: *app-environment
+    command:
+      - node
+      - --input-type=module
+      - -e
+      - "for (;;) { try { const response = await fetch('http://app:3000/api/internal/railplan/process', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.CRON_SECRET }, signal: AbortSignal.timeout(270000) }); if (!response.ok) console.error('Worker status', response.status); } catch { console.error('Worker unavailable'); } await new Promise(resolve => setTimeout(resolve, 60000)); }"
+    depends_on:
+      app:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres-data:

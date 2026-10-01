@@ -3,7 +3,7 @@
 import { Lock, Mail, TrainFront, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import s from "@/components/workspace/workspace.module.css";
+import s from "./auth-screen.module.css";
 
 type AuthMode = "firstSignup" | "login" | "resetPassword" | "tokenPassword" | "missingDatabase";
 
@@ -111,7 +111,7 @@ function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <main className={`${s.root} ${s.authPage}`}>
       <section className={s.authCard}>
-        <div className={s.authBrand}><div className={s.brandMark}><TrainFront size={22} /></div><div><h1>IRCTC Travel Planner</h1><p>Ticket tracker</p></div></div>
+        <div className={s.authBrand}><div className={s.brandMark}><TrainFront size={22} /></div><div><h1>Railplan</h1><p>Your journeys, ahead of time</p></div></div>
         <div className="grid gap-3">{children}</div>
         <p className="mt-5 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">Independent ticket planning tool. Not affiliated with or endorsed by IRCTC or Indian Railways.</p>
       </section>

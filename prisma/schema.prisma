@@ -6,40 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum TicketStatus {
-  PLANNED
-  BOOKED
-  ARCHIVED
-
-  @@map("JourneyStatus")
-}
-
-enum ReminderType {
-  SEVEN_DAYS_BEFORE
-  ONE_DAY_BEFORE
-  BOOKING_OPEN
-}
-
-enum HolidayType {
-  COMPANY
-  PERSONAL_LEAVE
-}
-
-enum NotificationChannel {
-  EMAIL
-  DISCORD
-  IN_APP
-}
-
-enum DeliveryStatus {
-  PENDING
-  SENDING
-  SENT
-  FAILED
-  READ
-  CANCELLED
-}
-
 enum UserRole {
   ADMIN
   USER
@@ -52,29 +18,24 @@ enum AccountTokenType {
 }
 
 model User {
-  id                 String             @id @default(cuid())
-  email              String             @unique
-  name               String?
-  passwordHash       String?
-  role               UserRole           @default(USER)
-  isActive           Boolean            @default(true)
-  mustResetPassword  Boolean            @default(false)
-  emailVerifiedAt    DateTime?
-  timeZone           String             @default("Asia/Kolkata")
-  weekendDays        Int[]              @default([0, 6])
-  calendarWeekStartsOn Int?
-  defaultEmail       Boolean            @default(true)
-  defaultDiscord     Boolean            @default(false)
-  defaultInApp       Boolean            @default(true)
-  discordWebhookUrl  String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  tickets            TicketPlan[]
-  holidays           Holiday[]
-  sessions           Session[]
-  accountTokens      AccountToken[]
-  reminderDeliveries ReminderDelivery[]
-  auditEvents        AuditLog[]         @relation("AuditActor")
+  id                String         @id @default(cuid())
+  email             String         @unique
+  name              String?
+  passwordHash      String?
+  role              UserRole       @default(USER)
+  isActive          Boolean        @default(true)
+  mustResetPassword Boolean        @default(false)
+  emailVerifiedAt   DateTime?
+  timeZone          String         @default("Asia/Kolkata")
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  sessions          Session[]
+  accountTokens     AccountToken[]
+  auditEvents       AuditLog[]     @relation("AuditActor")
+  railWorkspace     RailWorkspace?
+  railFiles         RailFile[]
+  railJobs          RailJob[]
+  railGoogle        RailGoogle?
 }
 
 model Session {
@@ -116,136 +77,12 @@ model RateLimitBucket {
 }
 
 model AppSettings {
-  id                         String   @id
-  allowSignups               Boolean  @default(true)
-  reminderEmailEnabled       Boolean  @default(true)
-  reminderDiscordEnabled     Boolean  @default(false)
-  reminderInAppEnabled       Boolean  @default(true)
-  reminderSevenDaysEnabled   Boolean  @default(true)
-  reminderOneDayEnabled      Boolean  @default(true)
-  reminderBookingOpenEnabled Boolean  @default(true)
-  bookingWindowDays          Int      @default(60)
-  bookingOpenHour            Int      @default(8)
-  bookingOpenMinute          Int      @default(0)
-  calendarWeekStartsOn       Int      @default(0)
-  pnrAutoSyncEnabled         Boolean  @default(false)
-  pnrSyncIntervalMinutes     Int      @default(360)
-  pnrProviderUrl             String?
-  pnrProviderApiKey          String?
-  smtpUrl                    String?
-  emailFrom                  String?
-  discordWebhookUrl          String?
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
-}
-
-model TicketPlan {
-  id                     String             @id @default(cuid())
-  userId                 String
-  sourceCode             String
-  sourceName             String?
-  destinationCode        String
-  destinationName        String?
-  travelDate             DateTime           @db.Date
-  bookingOpensAt         DateTime           @map("bookingOpenDate") @db.Timestamptz(3)
-  status                 TicketStatus       @default(PLANNED)
-  notes                  String?
-  pnrEncrypted           String?            @map("pnr")
-  pnrLast4               String?
-  remindersEnabled       Boolean            @default(true)
-  reminderEmailEnabled   Boolean            @default(true)
-  reminderDiscordEnabled Boolean            @default(false)
-  reminderInAppEnabled   Boolean            @default(true)
-  version                Int                @default(1)
-  journeyGroupId         String?
-  scheduleRevision       Int                @default(0)
-  pnrNextSyncAt           DateTime?
-  pnrLastError            String?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reminderSchedules      ReminderSchedule[]
-  pnrSnapshot            PnrSnapshot?
-
-  @@index([userId, travelDate])
-  @@index([userId, bookingOpensAt])
-  @@index([userId, status])
-  @@index([userId, journeyGroupId])
-  @@map("Journey")
-}
-
-model PnrSnapshot {
-  id             String     @id @default(cuid())
-  ticketId       String     @unique
-  provider       String
-  trainNumber    String?
-  trainName      String?
-  bookedClass    String?
-  providerStatus String?
-  coach          String?
-  seat           String?
-  syncedAt       DateTime   @default(now())
-  nextSyncAt     DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  ticket         TicketPlan @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
-  @@index([nextSyncAt])
-}
-
-model ReminderSchedule {
-  id          String             @id @default(cuid())
-  ticketId    String             @map("journeyId")
-  type        ReminderType
-  dueAt       DateTime           @db.Timestamptz(3)
-  processedAt DateTime?
-  revision    Int                @default(0)
-  cancelledAt DateTime?
-  createdAt   DateTime           @default(now())
-  ticket      TicketPlan         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  deliveries  ReminderDelivery[]
-
-  @@unique([ticketId, revision, type])
-  @@index([dueAt, processedAt])
-  @@map("JourneyReminder")
-}
-
-model ReminderDelivery {
-  id            String              @id @default(cuid())
-  scheduleId    String
-  userId        String
-  channel       NotificationChannel
-  status        DeliveryStatus      @default(PENDING)
-  attemptCount  Int                 @default(0)
-  nextAttemptAt DateTime?
-  sentAt        DateTime?
-  readAt        DateTime?
-  lastError     String?
-  leaseToken    String?
-  leaseExpiresAt DateTime?
-  snoozedUntil  DateTime?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  schedule      ReminderSchedule    @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
-  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([scheduleId, channel])
-  @@index([userId, channel, status, createdAt])
-  @@index([status, nextAttemptAt])
-}
-
-model Holiday {
-  id        String      @id @default(cuid())
-  userId    String
-  name      String
-  date      DateTime    @db.Date
-  type      HolidayType
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, date, name])
-  @@index([userId, date])
+  id           String   @id
+  allowSignups Boolean  @default(true)
+  smtpUrl      String?
+  emailFrom    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model AuditLog {
@@ -261,4 +98,62 @@ model AuditLog {
 
   @@index([actorId, createdAt])
   @@index([targetType, targetId])
+}
+
+model RailWorkspace {
+  userId    String   @id
+  version   Int      @default(1)
+  payload   String
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RailFile {
+  id        String
+  userId    String
+  name      String
+  type      String
+  size      Int
+  payload   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
+  @@index([userId, createdAt])
+}
+
+model RailJob {
+  id         String    @id @default(cuid())
+  userId     String
+  key        String
+  kind       String
+  payload    String    @default("")
+  dueAt      DateTime
+  state      String    @default("PENDING")
+  attempts   Int       @default(0)
+  lease      String?
+  leaseUntil DateTime?
+  sentAt     DateTime?
+  readAt     DateTime?
+  lastError  String?
+  providerId String?
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([state, dueAt])
+}
+
+model RailGoogle {
+  userId     String    @id
+  tokens     String
+  calendarId String?
+  eventIds   String[]  @default([])
+  enabled    Boolean   @default(true)
+  syncedAt   DateTime?
+  lastError  String?
+  lease      String?
+  leaseUntil DateTime?
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
