@@ -31,8 +31,26 @@ export async function parseJson<T>(request: Request, schema: ZodType<T>, maxByte
 
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    const reader = request.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    if (reader) {
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          bytes += value.byteLength;
+          if (bytes > maxBytes) {
+            await reader.cancel();
+            throw new ApiError(413, "The request is too large.", "PAYLOAD_TOO_LARGE");
+          }
+          chunks.push(value);
+        }
+      } finally { reader.releaseLock(); }
+    }
+    body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError(400, "The request body must be valid JSON.", "INVALID_JSON");
   }
 

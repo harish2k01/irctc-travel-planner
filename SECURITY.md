@@ -14,5 +14,5 @@ Do not open a public issue for a suspected vulnerability. Use GitHub private vul
 - Terminate TLS at the Gateway and keep security headers enabled.
 - Restrict database and worker endpoints to the cluster network.
 - Run migrations and create a verified backup before upgrades.
-- Rotate provider, SMTP, Discord, and database credentials after suspected exposure.
-- Never commit `.env` files, Kubernetes Secrets, PNRs, or user exports.
+- Rotate provider, SMTP, and database credentials after suspected exposure.
+- Never commit `.env` files, Kubernetes Secrets, ticket files, or user exports.

@@ -3,15 +3,25 @@ name: Pull Request Checks
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  release-label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const selected = context.payload.pull_request.labels.filter(label => ["major", "minor", "patch"].includes(label.name));
+            if (selected.length !== 1) core.setFailed("Add exactly one release label: major, minor, or patch.");
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -45,6 +55,7 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run prisma:generate
       - run: npm run prisma:migrate:deploy
+      - run: npm run test:release
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:coverage
@@ -55,7 +66,8 @@ jobs:
         if: always()
         with:
           name: browser-verification
-          path: build/workspace-qa
+          path: |
+            build/railplan-qa
           retention-days: 7
       - uses: docker/setup-buildx-action@v4
       - name: Build container

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IRCTC Travel Planner",
-  description: "Self-hosted Indian Railways ticket planning, booking reminders, and PNR tracking.",
+  title: "Railplan",
+  description: "Plan train journeys, manage tickets, and get booking reminders.",
   icons: {
     icon: "/icon.svg",
   },

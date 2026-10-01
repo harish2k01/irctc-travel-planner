@@ -20,8 +20,8 @@ async function send(to: string, subject: string, text: string) {
 
 export function sendInvitationEmail(email: string, token: string) {
   const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=invitation`;
-  return send(email, "Set up your IRCTC Travel Planner account", [
-    "An administrator created an IRCTC Travel Planner account for you.",
+  return send(email, "Set up your Railplan account", [
+    "An administrator created an Railplan account for you.",
     "",
     `Set your password using this one-time link: ${url}`,
     "",
@@ -31,7 +31,7 @@ export function sendInvitationEmail(email: string, token: string) {
 
 export function sendPasswordResetEmail(email: string, token: string) {
   const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=reset`;
-  return send(email, "Reset your IRCTC Travel Planner password", [
+  return send(email, "Reset your Railplan password", [
     "A password reset was requested for your account.",
     "",
     `Choose a new password using this one-time link: ${url}`,
@@ -40,18 +40,4 @@ export function sendPasswordResetEmail(email: string, token: string) {
   ].join("\n"));
 }
 
-export function sendReminderEmail(input: { email: string; route: string; travelDate: string; bookingDate: string; message: string; ticketId?: string }) {
-  return send(input.email, `Booking reminder: ${input.route}`, [
-    input.message,
-    "",
-    `Route: ${input.route}`,
-    `Travel date: ${input.travelDate}`,
-    `Booking date: ${input.bookingDate}`,
-    "",
-    `${appUrl()}/trips${input.ticketId ? `?trip=${encodeURIComponent(input.ticketId)}` : ""}`,
-  ].join("\n"));
-}
-
-export function sendTestEmail(email: string) {
-  return send(email, "Test reminder", "Email delivery is working for your IRCTC Travel Planner account.");
-}
+export function sendTestEmail(email:string){return send(email,"Railplan email test","Email delivery is working for your Railplan account.");}

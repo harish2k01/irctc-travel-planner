@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ transport: vi.fn(), send: vi.fn(), config: vi.fn() }));
 vi.mock("nodemailer", () => ({ default: { createTransport: mocks.transport } }));
 vi.mock("./settings", () => ({ getDeliveryConfiguration: mocks.config }));
-import { sendReminderEmail, sendTestEmail } from "./mail";
+import { sendPasswordResetEmail, sendTestEmail } from "./mail";
 
 describe("email transport", () => {
   beforeEach(() => {
@@ -25,12 +25,12 @@ describe("email transport", () => {
     expect(mocks.transport).not.toHaveBeenCalled();
   });
 
-  it("links reminders to the exact persisted trip", async () => {
-    await sendReminderEmail({ email: "user@example.invalid", route: "MDU to MS", travelDate: "2026-12-01", bookingDate: "2026-10-02", message: "Booking is open.", ticketId: "trip/one" });
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("/trips?trip=trip%2Fone") }));
+  it("links password resets to the one-time reset page", async () => {
+    await sendPasswordResetEmail("user@example.invalid", "test-token");
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("/set-password?token=test-token&type=reset") }));
   });
 
-  it("propagates delivery failure to the retrying worker", async () => {
+  it("propagates SMTP failure", async () => {
     mocks.send.mockRejectedValue(new Error("SMTP unavailable"));
     await expect(sendTestEmail("user@example.invalid")).rejects.toThrow("SMTP unavailable");
   });

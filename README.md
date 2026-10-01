@@ -1,116 +1,32 @@
-# IRCTC Travel Planner
+# Railplan
 
-A self-hosted Indian Railways ticket planning and PNR tracking application. It tracks tickets that need to be booked, computes booking windows, sends configurable reminders, links a plan to a PNR after booking, and combines travel dates with company and personal leave.
+A self-hosted train travel planner with configurable recurring journeys, booking reminders, a Kanban board, calendar, company holidays and personal leave, and private PDF/QR ticket storage.
 
-This project is independent and is not affiliated with or endorsed by IRCTC or Indian Railways. It does not automate login, CAPTCHA, booking, or payment.
+## Run locally
 
-## Capabilities
+Requires Node.js 24+ and PostgreSQL. Copy .env.example to .env, configure a fresh database and a base64-encoded 32-byte encryption key, then run:
 
-- Authenticated Today, Trips, Calendar and Settings workspace backed by PostgreSQL; no sample-data mode
-- Linked outbound/return plans, server-side search and pagination, and a separate trip history
-- Explicit booking completion without requiring a PNR; removing a PNR does not undo a booking
-- Optional PNR tagging; plans can be created before a ticket is booked
-- Per-ticket email, Discord, and in-app reminder channels
-- Revisioned reminder schedules, recoverable worker leases, bounded retries, read state and snooze
-- Calendar with booking, travel, company leave, and personal leave events, with an administrator-configurable Sunday or Monday week start
-- Ticket-specific leave and booking suggestions, including Saturday/Sunday leave
-- Administrator-controlled signups, invitations, users, delivery settings, and booking timing
-- One-time invitation and password-reset links
-- Encrypted PNR, SMTP, and private per-user Discord values at rest
-- PostgreSQL migrations, health endpoints, audit records, rate limits, and worker endpoints
-
-## Technology
-
-Next.js App Router, React, TypeScript, Tailwind CSS, FullCalendar, PostgreSQL, Prisma, Zod, Vitest, Docker, Kubernetes Gateway API, and GitHub Actions.
-
-## Local Setup
-
-Requirements: Node.js 24 and PostgreSQL 18.
-
-```bash
-cp .env.example .env
+```sh
 npm ci
 npm run prisma:generate
 npm run prisma:migrate:deploy
 npm run dev
 ```
 
-Open `http://localhost:3000`. The first account becomes the administrator. No tickets, holidays, analytics, or other user data are seeded.
+Or use `docker compose up --build` for a local app, persistent PostgreSQL, migrations, and a background worker. Compose credentials are for development only. Sign up at http://localhost:3000; the first account is administrator.
 
-Docker Compose runs PostgreSQL, migrations, and the application:
+## Deployment and providers
 
-```bash
-docker compose up --build
-```
+[Deployment guide](docs/railplan-deployment.md) covers portfolio-style GHCR/Helm/Argo CD hosting, secrets, backups, WhatsApp setup, and Google Calendar OAuth. Providers can be configured later.
 
-The Compose encryption key is only for local development. Replace every credential in production.
+This is a fresh application with one initial migration. Use an empty database; the old application, prototype, and upgrade history are removed.
 
-## Configuration
+## Verify
 
-Required environment variables:
-
-- `DATABASE_URL`
-- `NEXT_PUBLIC_APP_URL`
-- `APP_ENCRYPTION_KEY`: base64-encoded 32-byte key
-- `CRON_SECRET`
-
-SMTP, Discord, and PNR provider values can be entered in Settings and are encrypted before storage. Environment variables remain supported as deployment-level fallbacks.
-
-## PNR Provider
-
-Administrators can configure a licensed provider endpoint and optional API key under **Settings > PNR integration**. Use `{pnr}` in the URL or accept a `pnr` query parameter. The API key is sent as both a bearer token and `x-api-key`.
-
-`PNR_PROVIDER_URL` and `PNR_PROVIDER_API_KEY` remain available as deployment-level fallbacks. Values saved in Settings take precedence and are encrypted at rest.
-
-Expected response fields can be top-level or under `data`: `trainNumber`, `trainName`, `travelDate`, `class`, source/destination codes and names, current status, coach, seat, and passengers.
-
-RailRadar currently documents train, station, route, and live-running APIs, not PNR lookup, and states that it does not collect PNR numbers. Its live-train endpoint must not be configured as a PNR provider. See [RailRadar API documentation](https://railradar.in/docs) and [privacy policy](https://railradar.in/privacy).
-
-Without a valid provider, ticket plans and PNR tags still work; only automatic PNR detail refresh is unavailable.
-
-## Verification
-
-```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
-npm audit
-```
-
-`npm run verify` runs the static, unit-test and build checks. Database and browser checks additionally require a disposable database whose name ends in `_test`:
-
-```bash
-RUN_DB_TESTS=1 npm run test:coverage
-npx playwright install chromium
-RUN_E2E=1 npm run test:e2e
-```
-
-The browser suite resets that disposable database. It launches the built standalone application and tests real authenticated APIs, trip edits, ownership, reminders, imports, and responsive layouts. Never use a live database. Both pull-request and release CI run these checks with an isolated PostgreSQL service.
+`npm run verify` runs type checking, lint, coverage, and the production build. Database tests need `RUN_DB_TESTS=1` and an isolated database ending in `_test`. Browser tests need `RUN_E2E=1`, that isolated database, and Playwright Chromium: `npm run test:e2e`. The browser suite resets the test database.
 
 ## Releases
 
-Conventional commits drive semantic versions:
+Like portfolio-next, every PR needs exactly one label: `major`, `minor`, or `patch`. After merge, validation runs before release reconciliation assigns the next version to each merged PR in order. The release workflow publishes that exact commit to GHCR with `vX.Y.Z`, `X.Y.Z`, full commit-SHA, and latest aliases. The `image.json` release asset records the digest for manual deployment. Retries reuse an existing commit image. The fresh rebuild is a major release because it requires an empty database.
 
-- `feat:` minor release
-- `fix:`, `perf:`, `revert:` patch release
-- `type!:` or `BREAKING CHANGE:` major release
-- `docs:`, `test:`, `refactor:`, `chore:`, `ci:`, `build:` patch release
-
-The release workflow verifies the source before publishing a versioned GHCR image and only creates the GitHub Release after the image succeeds. Images include provenance and SBOM attestations.
-
-## Kubernetes
-
-The canonical manifest is [k8s/irctc-travel-planner.yaml](k8s/irctc-travel-planner.yaml). It includes the web deployment, PostgreSQL StatefulSet, migration template, reminder and PNR workers, backup job, HPA, PDB, network policies, health probes, Service, and Traefik Gateway API `HTTPRoute` for `irctc-travel-planner.k8s.harish2k01.xyz`.
-
-Secret creation and migration instructions are in [k8s/README.md](k8s/README.md). Keep database backups off-cluster as part of the recovery plan.
-
-The redesign changes reminder uniqueness and requires a coordinated worker/app cutover. See [workspace release notes](docs/live-workspace-release.md) before upgrading from 0.14.x.
-
-## Security and Privacy
-
-See [SECURITY.md](SECURITY.md) for vulnerability reporting and [PRIVACY.md](PRIVACY.md) for stored data and retention guidance.
-
-## License
-
-[MIT](LICENSE)
+Deployment charts and Argo CD definitions are being kept locally until GitOps deployment is enabled; this PR does not include them.

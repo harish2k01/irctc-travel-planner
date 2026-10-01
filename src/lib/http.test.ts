@@ -3,6 +3,12 @@ import { z } from "zod";
 import { ApiError, assertSameOrigin, jsonData, parseJson, routeError } from "@/lib/http";
 
 describe("API request handling", () => {
+  it("limits actual body bytes even when content-length is absent or incorrect", async () => {
+    for (const headers of [new Headers(), new Headers({ "content-length": "1" })]) {
+      const request = new Request("https://app.example.com/api/test", { method: "POST", body: JSON.stringify({ text: "é".repeat(40) }), headers });
+      await expect(parseJson(request, z.object({ text: z.string() }), 64)).rejects.toMatchObject({ status: 413, code: "PAYLOAD_TOO_LARGE" });
+    }
+  });
   it("accepts same-origin requests and rejects cross-origin requests", () => {
     const same = new Request("https://app.example.com/api/test", { headers: { host: "app.example.com", origin: "https://app.example.com" } });
     expect(() => assertSameOrigin(same)).not.toThrow();

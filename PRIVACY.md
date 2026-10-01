@@ -1,14 +1,7 @@
 # Privacy
 
-IRCTC Travel Planner is self-hosted. The operator controls all stored data and is responsible for applicable privacy obligations.
+Railplan is self-hosted. The operator controls stored data and retention.
 
-The application stores account identity, sessions, ticket routes and dates, encrypted PNR values, provider ticket snapshots, reminders, leave dates, settings, and security audit records. It does not need passenger names, payment data, IRCTC credentials, or CAPTCHA data.
+The application stores account identity, sessions, encrypted travel plans and optional ticket details, uploaded PDF/QR files, reminder jobs, company holidays and personal leave, encrypted Google OAuth credentials, and security audit records. WhatsApp reminders send the route and travel/booking dates to Meta and the configured recipient. Google sync sends journey and holiday events to the connected calendar. Uploaded tickets may contain passenger information; access is restricted to the account owner.
 
-Recommended retention:
-
-- Expired sessions and account tokens: remove after 30 days.
-- Reminder delivery and audit records: retain only as long as operationally required.
-- Archived tickets and PNR snapshots: provide an operator-defined deletion schedule.
-- Database backups: encrypt, restrict, test restores, and expire on schedule.
-
-Deleting a user cascades their tickets, PNR snapshots, reminders, leave dates, sessions, and tokens. Operators should document backup retention separately because database deletion does not remove older backups immediately.
+Deleting an account cascades its workspace, files, jobs, calendar connection, sessions, and tokens. Calendar events and previously delivered provider messages are external copies. Database backups have separate retention and must be protected along with the encryption key. Operators should establish and test backup, account, audit, and attachment retention policies.
