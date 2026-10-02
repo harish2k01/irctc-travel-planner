@@ -1,3 +1,4 @@
+import { getFeaturePolicy } from "@/lib/settings";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptSecret,decryptSecret } from "@/lib/crypto";
@@ -9,6 +10,7 @@ const MAX=10485760;
 export async function GET(request:Request,context:Context){try{const user=await requireUser();const {id}=await context.params;const file=await prisma.railFile.findUnique({where:{userId_id:{userId:user.id,id}}});if(!file)throw new ApiError(404,"Ticket file not found.");const bytes=Buffer.from(decryptSecret(file.payload)!,"base64");return new Response(bytes,{headers:{...noStoreHeaders(),"Content-Type":file.type,"Content-Length":String(bytes.length),"Content-Disposition":`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,"X-Content-Type-Options":"nosniff"}});}catch(e){return routeError(e,request);}}
 export async function PUT(request:Request,context:Context){try{
   assertSameOrigin(request);const user=await requireUser();const {id}=await context.params;
+  if(!(await getFeaturePolicy()).ticketUploadsEnabled)throw new ApiError(403,"Ticket uploads are disabled by the administrator.","FEATURE_DISABLED");
   if(!/^[A-Za-z0-9_-]{1,120}$/.test(id))throw new ApiError(400,"Invalid attachment identifier.");
   const size=Number(request.headers.get("content-length"));if(size>MAX)throw new ApiError(413,"Tickets must be smaller than 10 MB.");
   const chunks:Uint8Array[]=[];let length=0;const reader=request.body?.getReader();if(!reader)throw new ApiError(400,"File content is required.");

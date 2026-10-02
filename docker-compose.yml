@@ -2,15 +2,15 @@ services:
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: irctc
+      POSTGRES_USER: railwatch
       POSTGRES_PASSWORD: change-me
-      POSTGRES_DB: irctc
+      POSTGRES_DB: railwatch
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: [CMD-SHELL, pg_isready -U irctc -d irctc]
+      test: [CMD-SHELL, pg_isready -U railwatch -d railwatch]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -19,8 +19,8 @@ services:
     build: .
     command: [npm, run, prisma:migrate:deploy]
     environment: &app-environment
-      DATABASE_URL: postgresql://irctc:change-me@postgres:5432/irctc?schema=public
-      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      DATABASE_URL: postgresql://railwatch:change-me@postgres:5432/railwatch?schema=public
+      APP_URL: http://localhost:3000
       APP_ENCRYPTION_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       RATE_LIMIT_SALT: local-development-salt
       CRON_SECRET: local-development-worker-secret
@@ -44,7 +44,7 @@ services:
       - node
       - --input-type=module
       - -e
-      - "for (;;) { try { const response = await fetch('http://app:3000/api/internal/railplan/process', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.CRON_SECRET }, signal: AbortSignal.timeout(270000) }); if (!response.ok) console.error('Worker status', response.status); } catch { console.error('Worker unavailable'); } await new Promise(resolve => setTimeout(resolve, 60000)); }"
+      - "for (;;) { try { const response = await fetch('http://app:3000/api/internal/railwatch/process', { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.CRON_SECRET }, signal: AbortSignal.timeout(270000) }); if (!response.ok) console.error('Worker status', response.status); } catch { console.error('Worker unavailable'); } await new Promise(resolve => setTimeout(resolve, 60000)); }"
     depends_on:
       app:
         condition: service_started

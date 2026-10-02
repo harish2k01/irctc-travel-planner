@@ -17,9 +17,11 @@ Or use `docker compose up --build` for a local app, persistent PostgreSQL, migra
 
 ## Deployment and providers
 
-[Deployment guide](docs/railplan-deployment.md) covers portfolio-style GHCR/Helm/Argo CD hosting, secrets, backups, WhatsApp setup, and Google Calendar OAuth. Providers can be configured later.
+[Deployment guide](docs/railplan-deployment.md) covers GHCR releases, manual Kubernetes hosting, secrets, backups, WhatsApp setup, and Google Calendar OAuth. Providers can be configured later.
 
-This is a fresh application with one initial migration. Use an empty database; the old application, prototype, and upgrade history are removed.
+The dashboard is at `/`; journeys, calendar, routines, holidays, tickets, and admin pages have their own routes. User Settings manages profile details, phone number, preferences, connections, and passwords. Administrators control shared booking rules and feature availability, create or invite users, and manage roles and access. Each account has a private workspace.
+
+Set `APP_URL` to the public base URL at runtime so invitation links, password resets, and Google OAuth use the deployed hostname. The first account becomes administrator. Existing RailWatch installations can apply the checked-in Prisma migrations; a fresh installation starts with an empty database.
 
 ## Verify
 

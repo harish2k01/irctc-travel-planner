@@ -1,9 +1,9 @@
 import { attachmentSchema, type TicketAttachment } from "./travel-planner";
 import { parseTicketDetails, type TicketDetails } from "./ticket-details";
 
-async function fileRequest(id:string,init?:RequestInit){const response=await fetch(`/api/railplan/files/${encodeURIComponent(id)}`,init);if(!response.ok){const value=await response.json().catch(()=>({}));throw new Error(value.error?.message??"Ticket storage request failed.");}return response;}
+async function fileRequest(id:string,init?:RequestInit){const response=await fetch(`/api/railwatch/files/${encodeURIComponent(id)}`,init);if(!response.ok){const value=await response.json().catch(()=>({}));throw new Error(value.error?.message??"Ticket storage request failed.");}return response;}
 export async function saveTicketFile(id: string, blob: Blob, name?:string) { {await fileRequest(id,{method:"PUT",headers:{"Content-Type":blob.type,"X-File-Name":encodeURIComponent(name??(blob instanceof File?blob.name:"ticket"))},body:blob});return;} }
-export async function getTicketFile(id: string): Promise<Blob | undefined> { {const response=await fetch(`/api/railplan/files/${encodeURIComponent(id)}`,{cache:"no-store"});if(response.status===404)return undefined;if(!response.ok)throw new Error("Could not retrieve this ticket file.");return response.blob();} }
+export async function getTicketFile(id: string): Promise<Blob | undefined> { {const response=await fetch(`/api/railwatch/files/${encodeURIComponent(id)}`,{cache:"no-store"});if(response.status===404)return undefined;if(!response.ok)throw new Error("Could not retrieve this ticket file.");return response.blob();} }
 export async function deleteTicketFile(id: string) { {await fileRequest(id,{method:"DELETE"});return;} }
 export function validateTicketFile(file:File):TicketAttachment {return attachmentSchema.parse({id:crypto.randomUUID(),name:file.name,type:file.type,size:file.size,createdAt:new Date().toISOString()});}
 export async function downloadTicketFile(attachment: TicketAttachment, staged?: Blob) {

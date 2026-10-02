@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "crypto";
-import type { AccountTokenType } from "@prisma/client";
+import type { AccountTokenType,Prisma } from "@prisma/client";
 import { ApiError } from "@/lib/http";
 import { prisma } from "@/lib/db";
 
@@ -11,17 +11,21 @@ export async function createAccountToken(userId: string, type: AccountTokenType,
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
 
-  await prisma.$transaction([
-    prisma.accountToken.deleteMany({ where: { userId, type, usedAt: null } }),
-    prisma.accountToken.create({
+  await prisma.$transaction(async tx=>{
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    await tx.accountToken.deleteMany({ where: { userId, type, usedAt: null } });
+    await tx.accountToken.create({
       data: { id: randomUUID(), userId, type, tokenHash: hashToken(token), expiresAt },
-    }),
-  ]);
+    });
+  });
   return { token, expiresAt };
 }
 
-export async function consumeAccountToken(token: string, type: AccountTokenType) {
-  const record = await prisma.accountToken.findUnique({
+export async function consumeAccountToken(token: string, type: AccountTokenType,tx:Prisma.TransactionClient) {
+  const candidate=await tx.accountToken.findUnique({where:{tokenHash:hashToken(token)},select:{userId:true}});
+  if(!candidate)throw new ApiError(400,"This link is invalid or has expired.","INVALID_TOKEN");
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${candidate.userId} FOR UPDATE`;
+  const record = await tx.accountToken.findUnique({
     where: { tokenHash: hashToken(token) },
     include: { user: true },
   });
@@ -30,7 +34,7 @@ export async function consumeAccountToken(token: string, type: AccountTokenType)
     throw new ApiError(400, "This link is invalid or has expired.", "INVALID_TOKEN");
   }
 
-  const updated = await prisma.accountToken.updateMany({
+  const updated = await tx.accountToken.updateMany({
     where: { id: record.id, usedAt: null },
     data: { usedAt: new Date() },
   });

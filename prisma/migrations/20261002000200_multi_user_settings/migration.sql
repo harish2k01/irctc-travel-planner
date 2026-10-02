@@ -1,0 +1,7 @@
+ALTER TABLE "User" ADD COLUMN "phoneNumber" TEXT;
+ALTER TABLE "AppSettings" ADD COLUMN "bookingWindowDays" INTEGER NOT NULL DEFAULT 60,
+ADD COLUMN "remindersEnabled" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "whatsappEnabled" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "googleCalendarEnabled" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "ticketUploadsEnabled" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN "calendarExportEnabled" BOOLEAN NOT NULL DEFAULT true;

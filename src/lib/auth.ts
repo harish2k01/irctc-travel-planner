@@ -4,13 +4,14 @@ import { ApiError } from "@/lib/http";
 import { requestIpHash } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
 
-const SESSION_COOKIE = "irctc_session";
+const SESSION_COOKIE = "railwatch_session";
 const SESSION_DAYS = 14;
 
 export type AuthUser = {
   id: string;
   email: string;
   name?: string;
+  phoneNumber: string;
   role: "ADMIN" | "USER";
   mustResetPassword: boolean;
   timeZone: string;
@@ -75,6 +76,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     id: session.user.id,
     email: session.user.email,
     name: session.user.name ?? undefined,
+    phoneNumber: session.user.phoneNumber ?? "",
     role: session.user.role,
     mustResetPassword: session.user.mustResetPassword,
     timeZone: session.user.timeZone,

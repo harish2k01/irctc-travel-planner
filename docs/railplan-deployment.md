@@ -1,40 +1,44 @@
-# RailWatch deployment
+# RailWatch Deployment
 
-RailWatch is the application at `/railplan`. Sign up or sign in at `/`. Plans and ticket files are stored in PostgreSQL, encrypted with the application key. This repository uses a fresh initial schema; install it against a new empty database. The old app and browser prototype have been removed.
+The dashboard is at `/`, authentication at `/login`, and each section has its own route. PostgreSQL holds private account workspaces, encrypted tickets, jobs, and provider credentials.
 
-## Local run
+## Local Run
 
-Run `docker compose up --build`. The migration service prepares the database, the app serves port 3000, and the worker processes reminders every minute. Compose uses development credentials only. Its named PostgreSQL volume persists through container restarts; do not remove that volume to update the app.
+Run `docker compose up --build` for PostgreSQL, migrations, the app on port 3000, and a worker. Compose credentials are for development only; its named volume persists across updates. Alternatively configure `.env` from `.env.example`, install dependencies, generate Prisma, apply migrations, and run `npm run dev`. Background work requires a scheduled authenticated POST to `/api/internal/railwatch/process` every minute.
 
-Alternatively, configure `.env` from `.env.example`, run `npm ci`, `npm run prisma:generate`, `npm run prisma:migrate:deploy`, and `npm run dev`. A separately scheduled authenticated POST to `/api/internal/railplan/process` is required for background work.
+## Manual Kubernetes Deployment
 
-## Homelab: GHCR, Helm, and Argo CD
+Pin `ghcr.io/harish2k01/railwatch` to the digest in the release's `image.json` asset. The homelab deployment uses namespace `railwatch`, PostgreSQL 18 with database/user `railwatch`, two web replicas, a minute worker CronJob, and daily database backups. Deployment manifests remain local until GitOps is enabled.
 
-Local-only deployment files (not included in the release PR): the chart in `deploy/chart` follows the portfolio's container/GitOps hosting pattern. Release CI publishes the existing GHCR image. Pin a published digest in `image.digest` before syncing; `development` is a placeholder, not a release. Confirm the hostname in BOTH `publicUrl` and `gateway.hostname`. The defaults retain the existing planner hostname: do not install a competing HTTPRoute for that hostname during a parallel rollout. Use a temporary unique hostname or coordinate the existing route cutover.
+The public URL is `https://railwatch.k8s.harish2k01.xyz`. The HTTPRoute references `traefik/traefik-gateway`, listener `websecure`, and path prefix `/`. The existing `wildcard-k8s-tls` certificate covers this hostname; no additional certificate or Caddy site is required.
 
-Create namespace `railplan` and an externally managed Secret named `railplan-secrets` with these keys:
+Set runtime `APP_URL` to the public HTTPS URL. Supply an externally managed `railwatch-secrets` Secret with:
 
-- `POSTGRES_PASSWORD`: random database password.
-- `DATABASE_URL`: `postgresql://railplan:<URL-encoded-password>@railplan-postgres:5432/railplan?schema=public`.
-- `APP_ENCRYPTION_KEY`: base64 of 32 random bytes. Keep this key stable and back it up separately; losing it makes stored plans, files, and credentials unreadable.
-- `CRON_SECRET` and `RATE_LIMIT_SALT`: separate random values.
+- `POSTGRES_USER`, `POSTGRES_DB`, and a random `POSTGRES_PASSWORD`.
+- `DATABASE_URL`: `postgresql://railwatch:<URL-encoded-password>@railwatch-postgres:5432/railwatch`.
+- `APP_ENCRYPTION_KEY`: base64 of 32 random bytes. Preserve and back up this key separately.
+- Independent random `CRON_SECRET` and `RATE_LIMIT_SALT` values.
 
-Never commit populated secrets. Supply registry pull credentials in `imagePullSecrets` if the GHCR package is private. Verify the configured storage class, Traefik Gateway reference, DNS, and HTTPS certificate. Readiness checks database migrations and encryption configuration. Argo sync waves provision PostgreSQL, run migrations, then start the application and its minute CronJob. `deploy/argocd-application.yaml` intentionally uses manual sync; update its source revision and values to the reviewed release before applying it through your homelab GitOps repository.
+Never commit populated secrets. Run Prisma migrations before rollout, then verify readiness, worker execution, and HTTPS. Supply registry credentials if the GHCR package is private. Backups contain encrypted plans and ticket files; restoration also requires the original encryption key. Supplement daily cluster-storage backups with an off-cluster copy and a restore test.
 
-The first account becomes administrator. The workspace has shared booking-window settings per account. Existing installations must use a new database and deployment namespace; this baseline is not an upgrade migration for the old app.
+## Accounts And Shared Settings
 
-Before production use, arrange regular PostgreSQL backups, retain the encryption key, and test restoring both. PostgreSQL contains ticket attachments as well as plans. Upload limits are 10 MiB per PDF/image and 250 MiB total per account. The chart provisions durable storage but does not provision a backup destination or backup schedule.
+The first account becomes administrator. Admin Settings controls signup availability, booking-window days, reminders, WhatsApp, Google Calendar, ticket uploads, and calendar exports for every account. Disabled features disappear from User Settings; provider actions are also blocked on the server.
 
-## WhatsApp setup later
+User Management supports invitations, temporary-password accounts, role changes, and account disabling. Temporary-password users must choose their own password before accessing plans. Invitations expire after 24 hours and can be used once. Configure SMTP in Admin Settings or through `SMTP_URL` and `EMAIL_FROM`. Without SMTP, administrators can copy and share the invitation link.
 
-Add `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION` (a currently supported Meta Graph version), `WHATSAPP_TEMPLATE_NAME`, and optionally `WHATSAPP_TEMPLATE_LANGUAGE` (default `en`) to the application Secret. Approve a Meta template with three body text parameters in this order: route, travel date, booking-opening date/time. Example: "Book {{1}} for {{2}}. Booking opens {{3}}."
+Users manage username, email, phone, preferences, connections, and passwords in User Settings. Changing email requires the current password. Email/password changes sign out other sessions. Plans and tickets are private per account. Upload limits are 10 MiB per file and 250 MiB per account.
 
-After restarting the app, each user adds an international phone number and enables WhatsApp in Settings. Until credentials exist, WhatsApp is disabled and no messages are sent. In-app reminders still work. Worker leases and deterministic job identities prevent ordinary duplicate processing; delivery retries can produce a duplicate if Meta accepted a message but the response was lost. Provider delivery requires a live setup test.
+## WhatsApp Setup Later
+
+Add `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION` (a supported Meta Graph version), `WHATSAPP_TEMPLATE_NAME`, and optional `WHATSAPP_TEMPLATE_LANGUAGE` (default `en`) to the application Secret. Approve a template with three body parameters: route, travel date, and booking-opening date/time. Restart the app and worker.
+
+Each user adds an international phone number under User Settings / Profile and enables WhatsApp under Connections. The administrator must permit reminders and WhatsApp. Without provider credentials, no WhatsApp messages are sent; in-app reminders still work. A retry can duplicate a message if Meta accepted it but its response was lost. Verify live delivery after setup.
 
 ## Google Calendar
 
-Configure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Register the exact HTTPS redirect URI `<publicUrl>/api/railplan/google/callback` in your Google OAuth application and configure consent/test users or publishing as appropriate. Each user connects in Settings. The app creates a dedicated RailWatch calendar using the `calendar.app.created` scope and synchronizes journeys, booking events, and company/personal holidays. Pausing sync retains existing calendar events. Credentials are encrypted. Live OAuth and provider behavior require testing after setup.
+Configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and runtime `APP_URL`. Register `<APP_URL>/api/railwatch/google/callback` as the exact redirect URI, with appropriate OAuth consent/test users. Each user connects under User Settings / Connections when the administrator permits it. RailWatch creates a dedicated calendar with `calendar.app.created`, synchronizing journeys, booking events, and company/personal holidays. Pausing sync retains existing events. Verify live OAuth after setup.
 
 ## Validation
 
-`npm run verify` runs type checking, lint, tests with coverage, and the production build. Database tests require `RUN_DB_TESTS=1` and an isolated database whose name ends in `_test`. `npm run test:e2e` requires `RUN_E2E=1`, that isolated database, and Playwright Chromium. The browser suite resets that test database and checks the account workflow. Never use a live database for it.
+`npm run verify` checks types, lint, coverage, release logic, and production build. Database tests need `RUN_DB_TESTS=1` and an isolated database ending in `_test`. Browser tests need `RUN_E2E=1`, that isolated database, and Playwright Chromium. They reset the test database and cover private workspaces, routing, tickets, invitations, user access, and feature controls. Never run them against production. CI runs browser tests on PRs; release validation excludes them.

@@ -2,7 +2,7 @@ import nodemailer from "nodemailer";
 import { getDeliveryConfiguration } from "@/lib/settings";
 
 function appUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return process.env.APP_URL ?? "http://localhost:3000";
 }
 
 async function send(to: string, subject: string, text: string) {
