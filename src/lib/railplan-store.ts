@@ -17,7 +17,7 @@ export function validateWorkspace(value: unknown): Planner {
   return plannerSchema.parse({ ...planner, journeys: planner.journeys.map(j => ({...j,windowDays:days,originOffset:0,bookingDateOverride:undefined})), rules:planner.rules.map(r=>({...r,windowDays:days})) });
 }
 export function applyAccountSettings(planner:Planner,policy:FeaturePolicy,phoneNumber:string):Planner {
-return {...planner,settings:{...planner.settings,bookingWindowDays:policy.bookingWindowDays,whatsappNumber:phoneNumber,whatsappEnabled:planner.settings.whatsappEnabled&&policy.remindersEnabled&&policy.whatsappEnabled&&Boolean(phoneNumber)},journeys:planner.journeys.map(j=>({...j,windowDays:policy.bookingWindowDays,originOffset:0,bookingDateOverride:undefined})),rules:planner.rules.map(r=>({...r,windowDays:policy.bookingWindowDays}))};
+return {...planner,settings:{...planner.settings,weekStartsOn:policy.weekStartsOn,routineHorizonMode:policy.routineHorizonMode,routineMonthsAhead:policy.routineMonthsAhead,routineTicketCount:policy.routineTicketCount,bookingWindowDays:policy.bookingWindowDays,whatsappNumber:phoneNumber,whatsappEnabled:planner.settings.whatsappEnabled&&policy.remindersEnabled&&policy.whatsappEnabled&&Boolean(phoneNumber)},journeys:planner.journeys.map(j=>({...j,windowDays:policy.bookingWindowDays,originOffset:0,bookingDateOverride:undefined})),rules:planner.rules.map(r=>({...r,windowDays:policy.bookingWindowDays}))};
 }
 async function lock(tx: Prisma.TransactionClient, userId: string) { await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`; }
 export async function loadWorkspace(userId: string, now = new Date()) {
