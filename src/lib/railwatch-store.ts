@@ -50,6 +50,7 @@ export async function loadWorkspace(userId: string, now = new Date()) {
 export async function saveWorkspace(userId: string, value: unknown, revision: number, base?: unknown) {
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
   const input=plannerSchema.parse(value);
+  if(input.settings.emailEnabled&&!policy.remindersEnabled)throw new ApiError(403,"Booking reminders are disabled by the administrator.","FEATURE_DISABLED");
   if(input.settings.whatsappEnabled&&(!policy.whatsappEnabled||!policy.remindersEnabled))throw new ApiError(403,"WhatsApp reminders are disabled by the administrator.","FEATURE_DISABLED");
   let deletedFiles=0;const result=await prisma.$transaction(async tx => {
     await lock(tx,userId); const user=await tx.user.findUniqueOrThrow({where:{id:userId}});const telegram=await tx.railTelegram.findUnique({where:{userId}});

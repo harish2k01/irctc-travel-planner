@@ -8,13 +8,14 @@ function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/** Creates a time-limited, one-use invitation or password-reset token. */
-export async function createAccountToken(userId: string, type: AccountTokenType, ttlMinutes: number) {
+/** Creates a time-limited, one-use account token. */
+export async function createAccountToken(userId: string, type: AccountTokenType, ttlMinutes: number, expectedEmail?: string) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
 
   await prisma.$transaction(async tx=>{
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    if (expectedEmail && (await tx.user.findUniqueOrThrow({where:{id:userId}})).email !== expectedEmail) throw new ApiError(409,"Your email changed. Refresh your profile and try again.");
     await tx.accountToken.deleteMany({ where: { userId, type, usedAt: null } });
     await tx.accountToken.create({
       data: { id: randomUUID(), userId, type, tokenHash: hashToken(token), expiresAt },

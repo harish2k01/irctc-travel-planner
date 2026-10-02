@@ -1,3 +1,4 @@
+import { bookingDay,formatDay,type Journey } from "./travel-planner";
 import {emailTemplate} from "./message-templates";
 import { logger } from "./logger";
 import nodemailer from "nodemailer";
@@ -53,3 +54,13 @@ export function sendTestEmail(email:string){return send(email,"RailWatch email t
 
 /** Maps SMTP protocol failures to actionable messages without exposing credentials or recipient addresses. */
 export function smtpFailureReason(error:unknown){const e=error as {code?:string;command?:string;responseCode?:number};if(e.code==="EENVELOPE"&&e.command==="MAIL FROM")return "SMTP rejected the sender address. Set Sender to an address or verified alias allowed by your SMTP account.";if(e.code==="EAUTH")return "SMTP authentication failed. Check the username and password.";if(e.code==="ETIMEDOUT")return "SMTP timed out. Check the host, port, and network access.";if(e.code==="ESOCKET")return "Could not connect to SMTP. Check the host, port, and TLS settings.";return "SMTP did not accept the test email. Check the saved connection, sender address, and recipient.";}
+
+/** Sends an expiring ownership confirmation link for the current account email. */
+export function sendVerificationEmail(email:string,token:string){
+  const url=`${appUrl()}/verify-email?token=${encodeURIComponent(token)}`;
+  return send(email,"Verify your RailWatch email","Confirm that this email address belongs to you to receive booking reminders.\n\nThis one-time link expires in 24 hours. Ignore it if you did not request it.",{label:"Verify Email",url});
+}
+/** Delivers a branded booking reminder; callers must recheck verified recipient eligibility. */
+export function sendBookingEmail(email:string,journey:Journey){
+  return send(email,"RailWatch · Booking reminder",`${journey.from} → ${journey.to}\n\nTravel: ${formatDay(journey.date,{day:"numeric",month:"long",year:"numeric"})}\nBooking Date: ${formatDay(bookingDay(journey),{day:"numeric",month:"long",year:"numeric"})}\nOpens at 8:00 AM IST\n\nBook through IRCTC, then mark this journey as booked in RailWatch.`,{label:"Open Journeys",url:`${appUrl()}/journeys`});
+}

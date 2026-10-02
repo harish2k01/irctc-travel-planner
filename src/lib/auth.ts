@@ -15,6 +15,7 @@ export type AuthUser = {
   role: "ADMIN" | "USER";
   mustResetPassword: boolean;
   timeZone: string;
+  emailVerified: boolean;
 };
 
 /** Hashes an opaque token before storing or comparing it, keeping raw credentials out of the database. */
@@ -84,6 +85,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     role: session.user.role,
     mustResetPassword: session.user.mustResetPassword,
     timeZone: session.user.timeZone,
+    emailVerified: Boolean(session.user.emailVerifiedAt),
   };
 }
 
