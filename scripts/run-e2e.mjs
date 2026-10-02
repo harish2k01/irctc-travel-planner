@@ -28,9 +28,14 @@ try {
     if (code) break;
   }
 } finally {
+  // Register shutdown listeners before killing either service; signal exits can
+  // leave exitCode null, and Windows may deliver the exit event immediately.
+  const stopped = [server, backend].map((child) => new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) resolve();
+    else child.once("exit", resolve);
+  }));
   server.kill();
   backend.kill();
-  await new Promise((resolve) => { if (server.exitCode !== null) resolve(); else server.once("exit", resolve); });
-  await new Promise((resolve) => { if (backend.exitCode !== null) resolve(); else backend.once("exit", resolve); });
+  await Promise.all(stopped);
 }
 process.exitCode = code;
