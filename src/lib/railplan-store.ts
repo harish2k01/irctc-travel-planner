@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { ApiError } from "./http";
-import { EMPTY_PLANNER, extendRoutines, migratePlanner, plannerSchema, todayIST, type Planner } from "./travel-planner";
+import { EMPTY_PLANNER, extendRoutines, reconcileJourneyLifecycle, migratePlanner, plannerSchema, todayIST, type Planner } from "./travel-planner";
 
 export function decodeWorkspace(payload: string) { return migratePlanner(JSON.parse(decryptSecret(payload)!)); }
 export function validateWorkspace(value: unknown): Planner {
@@ -31,7 +31,7 @@ export async function loadWorkspace(userId: string, now = new Date()) {
     const initial=applyAccountSettings(EMPTY_PLANNER,policy,user.phoneNumber??"",telegram,telegramProviderId);
     const existing = await tx.railWorkspace.findUnique({where:{userId}});
     if (!existing) { const record = await tx.railWorkspace.create({data:{userId,payload:encryptSecret(JSON.stringify(initial))}}); return {planner:initial,revision:record.version}; }
-    const planner=decodeWorkspace(existing.payload); const extended=extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??"",telegram,telegramProviderId),todayIST(now));
+    const planner=decodeWorkspace(existing.payload); const extended=reconcileJourneyLifecycle(extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??"",telegram,telegramProviderId),todayIST(now)),todayIST(now));
     if (!sameContent(extended, planner)) { const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(extended)),version:{increment:1}}}); return {planner:extended,revision:record.version}; }
     return {planner,revision:existing.version};
   },{timeout:20000});
@@ -53,6 +53,7 @@ export async function saveWorkspace(userId: string, value: unknown, revision: nu
         planner=validateWorkspace(mergeWorkspace(original,planner,latest));
       } catch(error) { if(error instanceof WorkspaceConflict) throw new ApiError(409,error.message,"VERSION_CONFLICT"); throw error; }
     }
+    planner=reconcileJourneyLifecycle(planner,todayIST());
     const files=planner.journeys.flatMap(j=>j.attachments??[]);
     if (new Set(files.map(f=>f.id)).size !== files.length) throw new ApiError(400,"Each attachment must belong to one journey.");
     const owned=await tx.railFile.findMany({where:{userId,id:{in:files.map(f=>f.id)}},select:{id:true,name:true,type:true,size:true}});

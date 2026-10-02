@@ -38,8 +38,10 @@ export function parseTicketDetails(raw: string): TicketDetails {
   if(current){details.coach=current[1];details.seat=current[2];details.berth=current[3];}
   const passengerRow=text.match(/(?:Booking Status|Current Status)[^\n]*\n[^\n]*?\b([A-Z]\d{1,2})\s+(\d{1,3})\s+(SIDE\s+LOWER|SIDE\s+UPPER|LOWER|MIDDLE|UPPER|LB|MB|UB|SL|SU)\b/i);
   if(passengerRow){details.coach??=passengerRow[1];details.seat??=passengerRow[2];details.berth??=passengerRow[3];}
-  details.departure??=text.match(/(?:Scheduled Departure|Departure Time|Boarding Time)\s*\*?\s*[:\-]?\s*(?:\d{2}[-/]\w{2,9}[-/]\d{4}\s+)?((?:[01]?\d|2[0-3]):[0-5]\d)(?:\s*(AM|PM))?/i)?.slice(1).filter(Boolean).join(" ");
+  details.departure??=text.match(/(?:Scheduled Departure|Departure(?: Time)?|Boarding Time)\s*\*?\s*[:\-]?\s*(?:\d{2}[-/]\w{2,9}[-/]\d{4}\s+)?((?:[01]?\d|2[0-3]):[0-5]\d)(?:\s*(AM|PM))?/i)?.slice(1).filter(Boolean).join(" ");
   if(details.departure){const time=details.departure.match(/^(\d{1,2}):([0-5]\d)(?:\s*(AM|PM))?$/i);if(time){let hour=Number(time[1]);if(time[3]&&hour>=1&&hour<=12)hour=hour%12+(time[3].toUpperCase()==="PM"?12:0);details.departure=String(hour).padStart(2,"0")+":"+time[2];}}
+  details.date??=text.match(/\bStart Date\s*\*?\s*[:\-]?\s*(\d{2}-[A-Za-z]{3}-\d{4})/i)?.[1];
+  if(details.date&&/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(details.date)){const [day,month,year]=details.date.split("-");const number=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(month.toLowerCase())+1;details.date=`${year}-${String(number).padStart(2,"0")}-${day}`;}
   if (details.date && /^\d{2}[-\/]\d{2}[-\/]\d{4}$/.test(details.date)) { const [day, month, year] = details.date.split(/[-\/]/); details.date = `${year}-${month}-${day}`; }
   for(const key of ["from","to","trainName"] as const)if(details[key])details[key]=details[key]!.replace(/[,;]\s*$/,"").trim();
   if (details.date && !isDay(details.date)) delete details.date;
