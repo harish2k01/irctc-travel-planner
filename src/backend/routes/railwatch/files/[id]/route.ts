@@ -18,9 +18,9 @@ export async function PUT(request:Request,context:Context){try{
   const chunks:Uint8Array[]=[];let length=0;const reader=request.body?.getReader();if(!reader)throw new ApiError(400,"File content is required.");
   while(true){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>MAX){await reader.cancel();throw new ApiError(413,"Tickets must be smaller than 10 MB.");}chunks.push(value);}
   const bytes=Buffer.concat(chunks);const type=request.headers.get("content-type")??"";
+  if(type!=="application/pdf")throw new ApiError(400,"Only PDF originals can be stored. Images and QR codes are used only to extract details.","PDF_ONLY");
   const meta=attachmentSchema.parse({id,name:decodeURIComponent(request.headers.get("x-file-name")??"ticket"),type,size:bytes.length,createdAt:new Date().toISOString()});
-  const valid=type==="application/pdf"?bytes.subarray(0,1024).includes(Buffer.from("%PDF-")):type==="image/png"?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):type==="image/jpeg"?bytes[0]===255&&bytes[1]===216&&bytes[2]===255:type==="image/webp"?bytes.subarray(0,4).toString()==="RIFF"&&bytes.subarray(8,12).toString()==="WEBP":false;
-  if(!valid)throw new ApiError(400,"The file contents do not match the PDF or image type.");
+  if(!bytes.subarray(0,1024).includes(Buffer.from("%PDF-")))throw new ApiError(400,"The file contents do not match the PDF type.");
   await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;const old=await tx.railFile.findUnique({where:{userId_id:{userId:user.id,id}}});if(old){if(old.name!==meta.name||old.type!==meta.type||old.size!==meta.size||decryptSecret(old.payload)!==bytes.toString("base64"))throw new ApiError(409,"This attachment already exists. Upload it using a new identifier.");return;}
     const used=await tx.railFile.aggregate({where:{userId:user.id},_sum:{size:true}});if((used._sum.size??0)+bytes.length>250_000_000)throw new ApiError(413,"Your ticket storage limit is 250 MB. Remove unused files first.");
     await tx.railFile.create({data:{id,userId:user.id,name:meta.name,type:meta.type,size:meta.size,payload:encryptSecret(bytes.toString("base64"))}});
