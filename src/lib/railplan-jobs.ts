@@ -36,7 +36,7 @@ export async function processRailplan(now=new Date()){
       const currentPolicy=await getFeaturePolicy();const workspace=await prisma.railWorkspace.findUnique({where:{userId:job.userId},include:{user:{select:{isActive:true,phoneNumber:true}}}});const planner=workspace?applyAccountSettings(decodeWorkspace(workspace.payload),currentPolicy,workspace.user.phoneNumber??""):undefined;
       const actual=currentPolicy.remindersEnabled&&(job.kind!=="WHATSAPP"||currentPolicy.whatsappEnabled)&&planner&&workspace?.user.isActive?reminderJobs(planner,now).find(j=>j.key===job.key):undefined;
       if(!actual){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"CANCELLED",lease:null,leaseUntil:null}});continue;}
-      if(job.kind==="WHATSAPP"&&!whatsappReady()){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"PENDING",attempts:{decrement:1},dueAt:new Date(now.getTime()+300000),lastError:"WhatsApp setup is incomplete.",lease:null,leaseUntil:null}});continue;}
+      if(job.kind==="WHATSAPP"&&!await whatsappReady()){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"PENDING",attempts:{decrement:1},dueAt:new Date(now.getTime()+300000),lastError:"WhatsApp setup is incomplete.",lease:null,leaseUntil:null}});continue;}
       const journey=planner!.journeys.find(j=>j.id===actual.journeyId)!;
       const providerId=job.kind==="WHATSAPP"?await sendWhatsApp(planner!.settings.whatsappNumber,journey):undefined;
       await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"SENT",sentAt:now,providerId,lastError:null,lease:null,leaseUntil:null}});sent++;

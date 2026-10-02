@@ -25,19 +25,25 @@ Never commit populated secrets. Run Prisma migrations before rollout, then verif
 
 The first account becomes administrator. Admin Settings controls signup availability, booking-window days, reminders, WhatsApp, Google Calendar, ticket uploads, and calendar exports for every account. Disabled features disappear from User Settings; provider actions are also blocked on the server.
 
-User Management supports invitations, temporary-password accounts, role changes, and account disabling. Temporary-password users must choose their own password before accessing plans. Invitations expire after 24 hours and can be used once. Configure SMTP in Admin Settings or through `SMTP_URL` and `EMAIL_FROM`. Without SMTP, administrators can copy and share the invitation link.
+Admin Settings / User Management supports invitations, temporary-password accounts, role changes, and account disabling. Temporary-password users must choose their own password before accessing plans. Invitations expire after 24 hours and can be used once. Configure SMTP in Admin Settings or through `SMTP_URL` and `EMAIL_FROM`. Without SMTP, administrators can copy and share the invitation link.
 
 Users manage username, email, phone, preferences, connections, and passwords in User Settings. Changing email requires the current password. Email/password changes sign out other sessions. Plans and tickets are private per account. Upload limits are 10 MiB per file and 250 MiB per account.
 
-## WhatsApp Setup Later
+## App Integrations
 
-Add `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION` (a supported Meta Graph version), `WHATSAPP_TEMPLATE_NAME`, and optional `WHATSAPP_TEMPLATE_LANGUAGE` (default `en`) to the application Secret. Approve a template with three body parameters: route, travel date, and booking-opening date/time. Restart the app and worker.
+Configure providers in Admin Settings / Integrations. Credentials are encrypted in PostgreSQL and never returned by the settings API. Empty secret fields retain stored values; explicit Remove buttons disable the provider, including environment fallback. Updates apply immediately without restarting pods. Environment variables remain supported when no in-app override is stored. Back up the database and encryption key together.
 
-Each user adds an international phone number under User Settings / Profile and enables WhatsApp under Connections. The administrator must permit reminders and WhatsApp. Without provider credentials, no WhatsApp messages are sent; in-app reminders still work. A retry can duplicate a message if Meta accepted it but its response was lost. Verify live delivery after setup.
+### WhatsApp
 
-## Google Calendar
+In Meta, configure WhatsApp Business Cloud API, a registered business sender, an authorized access token, and an approved template. Enter the access token, sender Phone Number ID (not the recipient number), supported Graph API version, template name, and language in RailWatch. The template must have three body parameters: route, travel date, and booking-opening date/time. Meta permissions and template approval are completed outside RailWatch.
 
-Configure `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and runtime `APP_URL`. Register `<APP_URL>/api/railwatch/google/callback` as the exact redirect URI, with appropriate OAuth consent/test users. Each user connects under User Settings / Connections when the administrator permits it. RailWatch creates a dedicated calendar with `calendar.app.created`, synchronizing journeys, booking events, and company/personal holidays. Pausing sync retains existing events. Verify live OAuth after setup.
+Users add their own international number under User Settings / Profile and opt into reminders under Connections. They do not need Meta developer credentials. The administrator must enable reminders and WhatsApp. Saved configuration indicates credentials are present; it does not prove that Meta accepted them or that a message was delivered. Verify live delivery after setup. A retry may duplicate a message if Meta accepted it but its response was lost.
+
+### Google Calendar
+
+The administrator creates a Web Application OAuth client in Google Cloud, enables Calendar API, and configures the consent screen/test users or publishing. Enter its client ID and client secret in RailWatch. Register the exact redirect URI shown in Integrations: `<APP_URL>/api/railwatch/google/callback`.
+
+Each user authorizes their own Google account under User Settings / Connections. RailWatch requests `calendar.app.created` and creates a dedicated calendar for journeys, booking events, and company/personal holidays. App credentials stay server-side; user tokens remain private and encrypted. Changing/removing the app credentials pauses all Google connections and requires users to reconnect. Reconnection after an app credential change may create a new RailWatch calendar; previously created calendars are retained in Google.
 
 ## Validation
 

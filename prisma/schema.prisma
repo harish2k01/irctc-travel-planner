@@ -86,6 +86,7 @@ model AppSettings {
   googleCalendarEnabled Boolean @default(true)
   ticketUploadsEnabled Boolean @default(true)
   calendarExportEnabled Boolean @default(true)
+  providerConfig String?
   smtpUrl      String?
   emailFrom    String?
   createdAt    DateTime @default(now())

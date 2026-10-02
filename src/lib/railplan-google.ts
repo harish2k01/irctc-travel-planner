@@ -4,7 +4,8 @@ import { decryptSecret,encryptSecret } from "./crypto";
 import { getFeaturePolicy } from "./settings";
 import { applyAccountSettings,decodeWorkspace } from "./railplan-store";
 import { addDays,bookingDay,effectiveReminders,reminderPreview,type Planner } from "./travel-planner";
-export function googleReady(){return Boolean(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET&&process.env.APP_URL);}
+import { getProviderConfiguration,googleConfigured } from "./provider-config";
+export async function googleReady(){return googleConfigured(await getProviderConfiguration());}
 export function googleRedirect(){return new URL("/api/railwatch/google/callback",process.env.APP_URL).href;}
 export function googleEvents(planner:Planner){
   const events:{id:string;summary:string;description:string;start:{date?:string;dateTime?:string;timeZone?:string};end:{date?:string;dateTime?:string;timeZone?:string};reminders:{useDefault:false;overrides:{method:"popup";minutes:number}[]}}[]=[];
@@ -22,13 +23,14 @@ export function googleEvents(planner:Planner){
 }
 export async function googleFetch(token:string,path:string,init?:RequestInit){const response=await fetch(`https://www.googleapis.com/calendar/v3${path}`,{...init,redirect:"error",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json",...init?.headers},signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error(`Calendar request failed (${response.status}).`);return response.status===204?{}:response.json();}
 export async function syncGoogleCalendars(){
-  const policy=await getFeaturePolicy();if(!policy.googleCalendarEnabled||!googleReady())return 0;const accounts=await prisma.railGoogle.findMany({where:{enabled:true,user:{isActive:true}},orderBy:{syncedAt:{sort:"asc",nulls:"first"}},take:50});let synced=0;
+  const policy=await getFeaturePolicy();const configuration=await getProviderConfiguration();const google=configuration.google;if(!policy.googleCalendarEnabled||!googleConfigured(configuration)||!google)return 0;const accounts=await prisma.railGoogle.findMany({where:{enabled:true,user:{isActive:true}},orderBy:{syncedAt:{sort:"asc",nulls:"first"}},take:50});let synced=0;
   for(const connection of accounts){const lease=randomUUID();const now=new Date();const claim=await prisma.railGoogle.updateMany({where:{userId:connection.userId,enabled:true,OR:[{leaseUntil:null},{leaseUntil:{lt:now}}]},data:{lease,leaseUntil:new Date(now.getTime()+300000)}});if(!claim.count)continue;
     try{
       const workspace=await prisma.railWorkspace.findUnique({where:{userId:connection.userId}});if(!workspace)continue;
       let tokens=JSON.parse(decryptSecret(connection.tokens)!);
+      if(tokens.providerId!==google.id)throw new Error("Reconnect Google after configuration changes.");
       if(connection.calendarId&&!connection.lastError&&tokens.workspaceVersion===workspace.version)continue;
-      if(!tokens.access_token||tokens.expiresAt<Date.now()+60000){const response=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID!,client_secret:process.env.GOOGLE_CLIENT_SECRET!,refresh_token:tokens.refresh_token,grant_type:"refresh_token"}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error("Reconnect Google Calendar to renew access.");const fresh=await response.json();tokens={...tokens,...fresh,expiresAt:Date.now()+fresh.expires_in*1000};await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{tokens:encryptSecret(JSON.stringify(tokens))}});}
+      if(!tokens.access_token||tokens.expiresAt<Date.now()+60000){const response=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:google.clientId,client_secret:google.clientSecret,refresh_token:tokens.refresh_token,grant_type:"refresh_token"}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error("Reconnect Google Calendar to renew access.");const fresh=await response.json();tokens={...tokens,...fresh,expiresAt:Date.now()+fresh.expires_in*1000};await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{tokens:encryptSecret(JSON.stringify(tokens))}});}
       let calendarId=connection.calendarId;if(!calendarId){const calendar=await googleFetch(tokens.access_token,"/calendars",{method:"POST",body:JSON.stringify({summary:"RailWatch",description:"Train journeys, booking reminders, and time off managed by RailWatch.",timeZone:"Asia/Kolkata"})});calendarId=String(calendar.id);await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{calendarId}});}
       const base=`/calendars/${encodeURIComponent(calendarId!)}/events`;const user=await prisma.user.findUniqueOrThrow({where:{id:connection.userId}});const events=googleEvents(applyAccountSettings(decodeWorkspace(workspace.payload),policy,user.phoneNumber??""));
       // Persist ownership before network writes. A partial sync can then be reconciled on retry.
