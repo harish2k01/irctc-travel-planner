@@ -1,4 +1,5 @@
 "use client";
+import { Toast } from "./travel-planner/toast";
 import { RailWatchMark } from "@/components/railwatch-mark";
 
 import { Lock, Mail, UserRound } from "lucide-react";
@@ -61,8 +62,8 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
 
   return (
     <AuthShell>
-      {error && <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
-      {message && <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div>}
+      {error && <Toast key={error} error message={error} dismiss={()=>setError(undefined)}/>}
+      {message && !error && <Toast key={message} message={message} dismiss={()=>setMessage(undefined)}/>}
 
       {view === "login" && (
         <form action={(form) => submit("/api/auth/login", Object.fromEntries(form))} className="grid gap-3">

@@ -14,3 +14,10 @@ describe("ticket extraction suggestions", () => {
     expect(parseTicketDetails("opaque-encrypted-QR-payload")).toEqual({});
   });
 });
+
+it("reads long berth names and scheduled departure without a colon",()=>{expect(parseTicketDetails("Current Status\nCNF / B2 / 56 / SIDE LOWER\nScheduled Departure\n21:45")).toMatchObject({coach:"B2",seat:"56",berth:"SIDE LOWER",departure:"21:45"});});
+it("reads nested QR passengers and normalized keys",()=>{expect(parseTicketDetails(JSON.stringify({"PNR Number":"1234567890",passengers:[{"Coach No":"S2","Berth No":17,"Berth Type":"LOWER"}],"Scheduled Departure":"9:15 PM"}))).toMatchObject({coach:"S2",seat:"17",berth:"LOWER",departure:"21:15"});});
+
+it("reads delimited QR text without including neighboring fields",()=>{expect(parseTicketDetails("PNR:1234567890,TrainNo:12637,TrainName:PANDIAN EXP,From:CHENNAI,To:MADURAI,Class:AC 3 Tier (3A),Coach:B1,SeatNo:42,BerthType:LOWER,DepartureTime:21:30")).toMatchObject({from:"CHENNAI",to:"MADURAI",trainNumber:"12637",trainName:"PANDIAN EXP",travelClass:"3A",coach:"B1",seat:"42",berth:"LOWER",departure:"21:30"});});
+
+it("prefers current allocation over the original booking allocation",()=>{expect(parseTicketDetails("Booking Status: CNF/B1/24/UPPER\nCurrent Status: CNF/B2/56/LOWER")).toMatchObject({coach:"B2",seat:"56",berth:"LOWER"});});

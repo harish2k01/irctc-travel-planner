@@ -1,0 +1,12 @@
+import { beforeEach,expect,it,vi } from "vitest";
+const mocks=vi.hoisted(()=>({admin:vi.fn(),send:vi.fn(),limit:vi.fn()}));
+vi.mock("./auth",()=>({requireAdmin:mocks.admin}));
+vi.mock("./mail",()=>({sendTestEmail:mocks.send}));
+vi.mock("./rate-limit",()=>({enforceRateLimit:mocks.limit}));
+import { POST } from "@/backend/routes/admin/settings/email/test/route";
+import { ApiError } from "./http";
+const request=()=>new Request("http://localhost/api/admin/settings/email/test",{method:"POST",headers:{origin:"http://localhost"}});
+beforeEach(()=>{vi.clearAllMocks();mocks.admin.mockResolvedValue({id:"admin",email:"admin@example.invalid"});mocks.send.mockResolvedValue({sent:true});});
+it("sends only to the signed-in admin using a rate-limited action",async()=>{const response=await POST(request());expect(response.status).toBe(200);expect(mocks.send).toHaveBeenCalledWith("admin@example.invalid");expect(mocks.limit).toHaveBeenCalledWith(expect.any(Request),"smtp:test:admin",3,300000);});
+it("rejects unconfigured SMTP and does not expose provider secrets in errors",async()=>{mocks.send.mockResolvedValue({sent:false,reason:"Email delivery is not configured."});expect((await POST(request())).status).toBe(400);mocks.send.mockRejectedValue(Object.assign(new Error("smtp://user:private@host"),{code:"EAUTH"}));const response=await POST(request());expect(response.status).toBe(502);const text=await response.text();expect(text).toContain("authentication failed");expect(text).not.toContain("private");});
+it("requires administrator access before sending",async()=>{mocks.admin.mockRejectedValue(new ApiError(403,"Administrator access required."));expect((await POST(request())).status).toBe(403);expect(mocks.send).not.toHaveBeenCalled();});

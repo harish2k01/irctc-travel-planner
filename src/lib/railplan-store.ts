@@ -1,3 +1,4 @@
+import { mergeWorkspace, sameContent, WorkspaceConflict } from "./workspace-merge";
 import { getProviderConfiguration,telegramConfigured } from "./provider-config";
 import { telegramRecipient } from "./telegram";
 import { getFeaturePolicy } from "./settings";
@@ -31,19 +32,27 @@ export async function loadWorkspace(userId: string, now = new Date()) {
     const existing = await tx.railWorkspace.findUnique({where:{userId}});
     if (!existing) { const record = await tx.railWorkspace.create({data:{userId,payload:encryptSecret(JSON.stringify(initial))}}); return {planner:initial,revision:record.version}; }
     const planner=decodeWorkspace(existing.payload); const extended=extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??"",telegram,telegramProviderId),todayIST(now));
-    if (JSON.stringify(extended) !== JSON.stringify(planner)) { const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(extended)),version:{increment:1}}}); return {planner:extended,revision:record.version}; }
+    if (!sameContent(extended, planner)) { const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(extended)),version:{increment:1}}}); return {planner:extended,revision:record.version}; }
     return {planner,revision:existing.version};
   },{timeout:20000});
 }
-export async function saveWorkspace(userId: string, value: unknown, revision: number) {
+export async function saveWorkspace(userId: string, value: unknown, revision: number, base?: unknown) {
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
   const input=plannerSchema.parse(value);
   if(input.settings.whatsappEnabled&&(!policy.whatsappEnabled||!policy.remindersEnabled))throw new ApiError(403,"WhatsApp reminders are disabled by the administrator.","FEATURE_DISABLED");
   return prisma.$transaction(async tx => {
     await lock(tx,userId); const user=await tx.user.findUniqueOrThrow({where:{id:userId}});const telegram=await tx.railTelegram.findUnique({where:{userId}});
-    const planner=validateWorkspace(applyAccountSettings(input,policy,user.phoneNumber??"",telegram,telegramProviderId));
+    let planner=validateWorkspace(applyAccountSettings(input,policy,user.phoneNumber??"",telegram,telegramProviderId));
     const current=await tx.railWorkspace.findUnique({where:{userId}});
-    if (!current || current.version !== revision) throw new ApiError(409,"Your plans changed in another session. Reload the latest version before saving.","VERSION_CONFLICT");
+    if (!current) throw new ApiError(409,"Reload your workspace before saving.","VERSION_CONFLICT");
+    if (current.version !== revision) {
+      if (!base) throw new ApiError(409,"Your plans changed in another session. Reload the latest version before saving.","VERSION_CONFLICT");
+      try {
+        const original=validateWorkspace(applyAccountSettings(plannerSchema.parse(base),policy,user.phoneNumber??"",telegram,telegramProviderId));
+        const latest=validateWorkspace(applyAccountSettings(decodeWorkspace(current.payload),policy,user.phoneNumber??"",telegram,telegramProviderId));
+        planner=validateWorkspace(mergeWorkspace(original,planner,latest));
+      } catch(error) { if(error instanceof WorkspaceConflict) throw new ApiError(409,error.message,"VERSION_CONFLICT"); throw error; }
+    }
     const files=planner.journeys.flatMap(j=>j.attachments??[]);
     if (new Set(files.map(f=>f.id)).size !== files.length) throw new ApiError(400,"Each attachment must belong to one journey.");
     const owned=await tx.railFile.findMany({where:{userId,id:{in:files.map(f=>f.id)}},select:{id:true,name:true,type:true,size:true}});

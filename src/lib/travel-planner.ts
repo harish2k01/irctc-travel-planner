@@ -92,7 +92,7 @@ export function generateJourneys(raw: Rule, today = todayIST(), settings = EMPTY
       if (recurrence.frequency === "yearly") matches = (d.getUTCFullYear() - startDate.getUTCFullYear()) % recurrence.interval === 0 && date.slice(5) === rule.start.slice(5);
     }
     if (!matches || rule.excludedDates.includes(date)) continue;
-    const base = { from: rule.from, to: rule.to, train: "", travelClass: "", windowDays: rule.windowDays, originOffset: 0, departure: rule.departure, timePreference: rule.timePreference ?? "any" as const, status: "needs_booking" as const, pnr: "", notes: "", ruleId: rule.id };
+    const base = { from: rule.from, to: rule.to, train: "", trainName: "", trainNumber: "", travelClass: "", windowDays: rule.windowDays, originOffset: 0, departure: rule.departure, timePreference: rule.timePreference ?? "any" as const, status: "needs_booking" as const, pnr: "", notes: "", ruleId: rule.id };
     result.push({ ...base, id: `${rule.id}:${date}:outbound`, date, leg: "outbound" });
     if (rule.returnAfterDays !== null) {
       const returnDate = addDays(date, rule.returnAfterDays);

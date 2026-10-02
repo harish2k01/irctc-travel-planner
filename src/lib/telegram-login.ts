@@ -19,11 +19,11 @@ export async function beginTelegramLogin(userId:string,bot:TelegramConfiguration
   return details.url;
 }
 export async function verifyTelegramIdentity(token:string,bot:TelegramConfiguration,nonce:string,key:JWTVerifyGetKey=keys){
-  const {payload}=await jwtVerify(token,key,{issuer:"https://oauth.telegram.org",audience:bot.clientId!,algorithms:["RS256"],requiredClaims:["exp","iat","sub","nonce"],maxTokenAge:"10m"});
-  if(payload.nonce!==nonce||typeof payload.sub!=="string"||!/^\d+$/.test(payload.sub))throw new Error("Invalid Telegram identity");
-  const id=payload.id??payload.sub;
+  const {payload}=await jwtVerify(token,key,{issuer:"https://oauth.telegram.org",audience:bot.clientId!,algorithms:["RS256"],requiredClaims:["exp","iat","sub","nonce","id"],maxTokenAge:"10m"});
+  if(payload.nonce!==nonce||typeof payload.sub!=="string"||!payload.sub.length||payload.sub.length>256)throw new Error("Invalid Telegram identity");
+  // The OpenID subject is opaque; the signed profile id is the Bot API chat id.
+  const id=payload.id;
   if(!((typeof id==="number"&&Number.isSafeInteger(id)&&id>0)||(typeof id==="string"&&/^\d{1,16}$/.test(id)&&Number.isSafeInteger(Number(id))&&Number(id)>0)))throw new Error("Invalid Telegram chat");
-  if(String(id)!==payload.sub)throw new Error("Telegram identity mismatch");
   return {chatId:String(id),username:typeof payload.preferred_username==="string"?payload.preferred_username.slice(0,100):null};
 }
 export async function completeTelegramLogin(userId:string,state:string,code:string){
