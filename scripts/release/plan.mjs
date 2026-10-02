@@ -50,14 +50,14 @@ for (const plan of dryRun ? [] : plans) {
       name: plan.tag,
       target_commitish: plan.sha,
       generate_release_notes: true,
-      body: `Railplan release from #${plan.pr} (${plan.bump}).\n\nThe release workflow publishes the GHCR image after validation. The image metadata asset records its immutable digest and source commit.`,
+      body: `RailWatch release from #${plan.pr} (${plan.bump}).\n\nThe release workflow publishes the GHCR image after validation. The image metadata asset records its immutable digest and source commit.`,
     },
   });
   console.log(`Created ${plan.tag} from #${plan.pr} at ${plan.sha}`);
 }
 // Reconcile only unfinished Railplan publications; historical releases stay untouched.
 const unfinished = releases
-  .filter((r) => r.body?.startsWith("Railplan release from #") && !r.assets.some((asset) => asset.name === "image.json"))
+  .filter((r) => (r.body?.startsWith("RailWatch release from #") || r.body?.startsWith("Railplan release from #")) && !r.assets.some((asset) => asset.name === "image.json"))
   .map((r) => ({
     tag: r.tag_name,
     sha: git("rev-parse", `${r.tag_name}^{commit}`),

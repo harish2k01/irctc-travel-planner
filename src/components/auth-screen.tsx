@@ -1,6 +1,7 @@
 "use client";
+import { RailWatchMark } from "@/components/railwatch-mark";
 
-import { Lock, Mail, TrainFront, UserRound } from "lucide-react";
+import { Lock, Mail, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import s from "./auth-screen.module.css";
@@ -90,7 +91,7 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
           <Field icon={Mail} name="email" type="email" label="Email" autoComplete="email" />
           <Field icon={Lock} name="password" type="password" label="Password" autoComplete="new-password" />
           <p className="text-xs leading-5 text-slate-500">Use at least 12 characters with uppercase, lowercase, number, and symbol.</p>
-          <Primary busy={busy}>{mode === "firstSignup" ? "Create administrator" : "Create account"}</Primary>
+          <Primary busy={busy}>Create</Primary>
           {mode !== "firstSignup" && <button type="button" onClick={() => setView("login")} className="text-sm font-medium text-blue-700">Back to sign in</button>}
         </form>
       )}
@@ -111,7 +112,7 @@ function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <main className={`${s.root} ${s.authPage}`}>
       <section className={s.authCard}>
-        <div className={s.authBrand}><div className={s.brandMark}><TrainFront size={22} /></div><div><h1>Railplan</h1><p>Your journeys, ahead of time</p></div></div>
+        <div className={s.authBrand}><div className={s.brandMark}><RailWatchMark size={30} /></div><div><h1>RailWatch</h1><p>Your journeys, ahead of time</p></div></div>
         <div className="grid gap-3">{children}</div>
         <p className="mt-5 border-t border-slate-100 pt-3 text-xs leading-5 text-slate-500">Independent ticket planning tool. Not affiliated with or endorsed by IRCTC or Indian Railways.</p>
       </section>

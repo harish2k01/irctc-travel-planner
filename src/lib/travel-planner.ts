@@ -224,5 +224,5 @@ export function calendarFile(planner: Planner) {
   for (const h of planner.holidays) events.push(["BEGIN:VEVENT", `UID:${escape(h.id)}@railplan.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(h.name)}`, `DTSTART;VALUE=DATE:${h.date.replaceAll("-", "")}`, `DTEND;VALUE=DATE:${addDays(h.date, 1).replaceAll("-", "")}`, "END:VEVENT"].join("\r\n"));
   // Fold UTF-8 lines at 75 octets as required by iCalendar.
   const fold = (line: string) => { let out = ""; let size = 0; for (const c of line) { const length = new TextEncoder().encode(c).length; if (size + length > 75) { out += "\r\n "; size = 1; } out += c; size += length; } return out; };
-  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Railplan//Travel planner//EN", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR", ""].join("\r\n").split("\r\n").map(fold).join("\r\n");
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//RailWatch//Travel planner//EN", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR", ""].join("\r\n").split("\r\n").map(fold).join("\r\n");
 }

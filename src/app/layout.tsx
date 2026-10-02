@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Railplan",
+  title: "RailWatch",
   description: "Plan train journeys, manage tickets, and get booking reminders.",
   icons: {
     icon: "/icon.svg",
