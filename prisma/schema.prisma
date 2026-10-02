@@ -93,6 +93,8 @@ model AppSettings {
   ticketUploadsEnabled Boolean @default(true)
   calendarExportEnabled Boolean @default(true)
   providerConfig String?
+  telegramPollLease String?
+  telegramPollUntil DateTime?
   smtpUrl      String?
   emailFrom    String?
   createdAt    DateTime @default(now())
@@ -123,6 +125,9 @@ model RailTelegram {
   enabled Boolean @default(false)
   linkTokenHash String? @unique
   linkExpiresAt DateTime?
+  authStateHash String? @unique
+  authPayload String?
+  authExpiresAt DateTime?
   updatedAt DateTime @updatedAt
   user User @relation(fields:[userId], references:[id], onDelete:Cascade)
 }
