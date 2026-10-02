@@ -83,7 +83,7 @@ export function TravelPlanner({ account }: { account: AccountWorkspace & UserPro
   function open(next: Editor) { setError(""); setEditor(next); }
     /** Closes the active editor and clears its transient feedback. */
   function close() { if(saving)return; setEditor(null); setError(""); }
-    /** Applies the selected account or provider update and reports its result. */
+    /** Persists the edited journey while retaining the other account travel plans. */
   function update(j: Journey) { return commit({ ...planner, journeys: planner.journeys.map(old => old.id === j.id ? j : old) }, "Journey updated."); }
     /** Changes a journey board status and records an undo opportunity. */
   async function move(id: string, column: string) {

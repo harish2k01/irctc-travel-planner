@@ -15,7 +15,7 @@ export function sameContent(a: unknown, b: unknown): boolean {
 export class WorkspaceConflict extends Error {}
 /** Merges non-conflicting account edits against the latest saved workspace. */
 export function mergeWorkspace(base: Planner, edited: Planner, latest: Planner): Planner {
-    /** Selects an option, updates its native form value, and restores trigger focus. */
+    /** Merges a field when only one side changed it and rejects incompatible concurrent edits. */
   function choose<T>(before: T, after: T, current: T): T {
     if (sameContent(before, after)) return current;
     if (sameContent(before, current) || sameContent(after, current)) return after;
