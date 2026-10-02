@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "./http";
 import { prisma } from "./db";
@@ -7,13 +7,15 @@ import { getProviderConfiguration, resolveProviderConfiguration, telegramConfigu
 import { enforceRateLimit } from "./rate-limit";
 export const tokenHash=(token:string)=>createHash("sha256").update(token).digest("hex");
 export const telegramChatHash=(providerId:string,chatId:string)=>tokenHash(`${providerId}:${chatId}`);
-export function validWebhookSecret(received:string|null,expected:string){return Boolean(received&&Buffer.byteLength(received)===Buffer.byteLength(expected)&&timingSafeEqual(Buffer.from(received),Buffer.from(expected)));}
+/** Makes a bounded Telegram Bot API request without logging bot tokens or raw messages. */
 export async function telegramRequest<T>(token:string,method:"getMe"|"deleteWebhook"|"getUpdates"|"sendMessage",body:object={}):Promise<T>{
  let response:Response;try{response=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:"POST",redirect:"error",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});}catch{throw new ApiError(502,"Telegram could not be reached. Try again.","TELEGRAM_UNAVAILABLE");}
  const data=await response.json().catch(()=>null);if(!response.ok||!data?.ok)throw new ApiError(502,"Telegram rejected the request. Check the bot token and connection.","TELEGRAM_REJECTED");return data.result as T;
 }
+/** Sends a booking reminder to an already-linked account chat. */
 export async function sendTelegram(chatId:string,message:string,providerId:string){const config=await getProviderConfiguration();if(!telegramConfigured(config)||config.telegram?.id!==providerId)throw new ApiError(409,"Reconnect Telegram before sending reminders.");const result=await telegramRequest<{message_id:number}>(config.telegram.botToken,"sendMessage",{chat_id:chatId,text:message,link_preview_options:{is_disabled:true}});if(!Number.isSafeInteger(result.message_id))throw new ApiError(502,"Telegram did not confirm the message.");return String(result.message_id);}
 export const telegramUpdateSchema=z.object({update_id:z.number().int().nonnegative(),message:z.object({text:z.string().max(4096).optional(),chat:z.object({id:z.number().int().safe(),type:z.string()}),from:z.object({id:z.number().int().safe(),is_bot:z.boolean().optional(),username:z.string().max(100).optional()}).optional()}).optional()});
+/** Validates private bot messages and consumes unexpired account pairing tokens. */
 export async function receiveTelegramUpdate(update:z.infer<typeof telegramUpdateSchema>,config:TelegramConfiguration){
  const message=update.message;if(!message||message.chat.type!=="private"||!message.from||message.from.is_bot||message.from.id!==message.chat.id)return null;
  const chatId=String(message.chat.id),chatHash=telegramChatHash(config.id,chatId),match=message.text?.match(/^\/start(?:@[A-Za-z0-9_]+)? ([A-Za-z0-9_-]{43})$/),pair=message.text?.match(/^\/connect(?:@[A-Za-z0-9_]+)?\s+([A-Fa-f0-9]{4}-?[A-Fa-f0-9]{4}-?[A-Fa-f0-9]{4})\s*$/);
@@ -32,6 +34,7 @@ export async function receiveTelegramUpdate(update:z.infer<typeof telegramUpdate
   return claimed.count?{method:"sendMessage",chat_id:chatId,text:"Telegram is connected to RailWatch. Booking reminders are enabled using your personal reminder preferences. Send /stop to pause them."}:null;
  });
 }
+/** Links the verified Telegram chat to the account and invalidates competing ownership. */
 export async function bindTelegramAccount(userId:string,chatId:string,username:string|null,bot:TelegramConfiguration,credentialHash:string){
  await prisma.$transaction(async tx=>{
   await tx.$queryRaw`SELECT id FROM "AppSettings" WHERE id='global' FOR UPDATE`;
@@ -46,4 +49,5 @@ export async function bindTelegramAccount(userId:string,chatId:string,username:s
   await tx.railTelegram.update({where:{userId},data});
  });
 }
+/** Resolves the active account recipient for the currently configured bot. */
 export function telegramRecipient(connection:{chatId:string|null;enabled:boolean;providerId:string}|null,providerId?:string){return connection?.enabled&&connection.providerId===providerId?decryptSecret(connection.chatId)??"":"";}

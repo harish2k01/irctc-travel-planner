@@ -7,6 +7,7 @@ import { journeyOverview } from "@/lib/journey-overview";
 import { STATUS } from "./forms";
 import s from "./planner.module.css";
 
+/** Renders actionable journey metrics, booking deadlines, and upcoming travel. */
 export function Dashboard({ planner, today, now, openJourney, createJourney, go, chooseDate }: { planner: Planner; today: string; now: Date; openJourney: (j: Journey) => void; createJourney: () => void; go: (tab: "journeys" | "calendar" | "routines" | "holidays", status?: Journey["status"]) => void; chooseDate: (date: string) => void }) {
   const active = planner.journeys.filter(j => !j.archivedAt);
   const {upcoming,bookable,bookingSoon,booked,attention}=dashboardJourneys(planner,now);
@@ -30,4 +31,5 @@ export function Dashboard({ planner, today, now, openJourney, createJourney, go,
     <div className={s.dashboardBottom}><section className={s.dashboardPanel}><header><div><span className={s.eyebrow}>Make room for a break</span><h2>Upcoming Time Off</h2></div><button className={s.textButton} onClick={()=>go("holidays")}>View all <ArrowRight size={15}/></button></header>{holidays.map(h=><div className={s.timeOffRow} key={h.id}><MapPin size={17}/><div><b>{h.name}</b><small>{h.type==="company"?"Company holiday":"Personal leave"}</small></div><span>{formatDay(h.date)}</span></div>)}{!holidays.length&&<p className={s.panelEmpty}>Add your company holidays or personal leave to plan ahead.</p>}</section><section className={`${s.dashboardPanel} ${s.routineCallout}`}><span className={s.metricIcon}><Repeat2 size={24}/></span><h2>Give Regular Travel A Routine</h2><p>{planner.rules.length?`${planner.rules.filter(r=>!r.paused).length} active routines keep your travel plans up to date.`:"Choose your route and schedule once. We’ll create your upcoming journeys."}</p><button className={s.secondary} onClick={()=>go("routines")}>Manage routines <ArrowRight size={15}/></button></section></div>
   </div>;
 }
+/** Renders the shared forward navigation indicator. */
 function Chevron(){return <ArrowRight className={s.rowArrow} size={16}/>;}

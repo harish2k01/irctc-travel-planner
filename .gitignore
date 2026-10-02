@@ -41,5 +41,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/public/railplan/pdf.worker.min.mjs
+/public/railwatch/pdf.worker.min.mjs
 /public/railwatch/ocr/

@@ -1,6 +1,8 @@
 import { bookingDay,formatDay,type Journey } from "./travel-planner";
 import { getProviderConfiguration,whatsappConfigured } from "./provider-config";
+/** Checks the currently configured WhatsApp delivery provider. */
 export async function whatsappReady(){return whatsappConfigured(await getProviderConfiguration());}
+/** Sends an approved reminder template to the account recipient. */
 export async function sendWhatsApp(number:string,journey:Journey){
   const config=await getProviderConfiguration();const whatsapp=config.whatsapp;
   if(!whatsappConfigured(config)||!whatsapp)throw new Error("WhatsApp is not configured.");

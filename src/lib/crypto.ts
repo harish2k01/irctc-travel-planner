@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypt
 
 const PREFIX = "enc:v1";
 
+/** Validates the configured base64 encryption key before cryptographic operations. */
 function encryptionKey() {
   const configured = process.env.APP_ENCRYPTION_KEY;
   if (!configured) {
@@ -16,6 +17,7 @@ function encryptionKey() {
   return decoded;
 }
 
+/** Encrypts sensitive text with AES-256-GCM using a fresh nonce. */
 export function encryptSecret(value: string) {
   if (value.startsWith(`${PREFIX}:`)) return value;
 
@@ -26,6 +28,7 @@ export function encryptSecret(value: string) {
   return [PREFIX, iv.toString("base64url"), tag.toString("base64url"), encrypted.toString("base64url")].join(":");
 }
 
+/** Decrypts stored values and supports historical plaintext inputs during migration. */
 export function decryptSecret(value: string | null | undefined) {
   if (!value) return undefined;
   if (!value.startsWith(`${PREFIX}:`)) return value;
@@ -41,11 +44,13 @@ export function decryptSecret(value: string | null | undefined) {
   ]).toString("utf8");
 }
 
+/** Checks whether a stored value uses the versioned encryption envelope. */
 export function isEncrypted(value: string | null | undefined) {
   return Boolean(value?.startsWith(`${PREFIX}:`));
 }
 
+/** Produces a salted identifier for rate limiting without storing raw network identifiers. */
 export function stableHash(value: string) {
-  const salt = process.env.RATE_LIMIT_SALT ?? process.env.APP_ENCRYPTION_KEY ?? "irctc-travel-planner";
+  const salt = process.env.RATE_LIMIT_SALT ?? process.env.APP_ENCRYPTION_KEY ?? "RailWatch";
   return createHash("sha256").update(`${salt}:${value}`).digest("hex");
 }

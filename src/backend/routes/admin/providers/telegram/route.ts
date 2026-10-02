@@ -5,6 +5,7 @@ import { ApiError,assertSameOrigin,jsonData,routeError } from "@/lib/http";
 import { getProviderConfiguration,providerSummary,resolveProviderConfiguration } from "@/lib/provider-config";
 import { telegramRequest } from "@/lib/telegram";
 import { enforceRateLimit } from "@/lib/rate-limit";
+/** Verifies the saved bot credentials and enables outgoing polling. */
 export async function POST(request:Request){try{
  assertSameOrigin(request);const user=await requireAdmin();await enforceRateLimit(request,"telegram:setup:"+user.id,5,60000);
  const config=await getProviderConfiguration(),bot=config.telegram;if(!bot)throw new ApiError(400,"Save your bot configuration first.");

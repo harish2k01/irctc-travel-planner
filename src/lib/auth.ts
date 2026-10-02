@@ -17,10 +17,12 @@ export type AuthUser = {
   timeZone: string;
 };
 
+/** Hashes an opaque token before storing or comparing it, keeping raw credentials out of the database. */
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/** Creates a secure session cookie backed by a hashed database token. */
 export async function createSession(userId: string, request?: Request) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
@@ -45,6 +47,7 @@ export async function createSession(userId: string, request?: Request) {
   });
 }
 
+/** Revokes the current session and clears its browser cookie. */
 export async function destroySession() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
@@ -52,6 +55,7 @@ export async function destroySession() {
   cookieStore.delete(SESSION_COOKIE);
 }
 
+/** Resolves the authenticated, active user from the request-bound session cookie. */
 export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!process.env.DATABASE_URL) return null;
   const cookieStore = await cookies();
@@ -83,6 +87,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   };
 }
 
+/** Rejects unauthenticated or restricted accounts before protected operations. */
 export async function requireUser() {
   const user = await getCurrentUser();
   if (!user) throw new ApiError(401, "Sign in to continue.", "UNAUTHENTICATED");
@@ -90,12 +95,14 @@ export async function requireUser() {
   return user;
 }
 
+/** Requires an authenticated administrator for instance-wide configuration. */
 export async function requireAdmin() {
   const user = await requireUser();
   if (user.role !== "ADMIN") throw new ApiError(403, "Administrator access is required.", "FORBIDDEN");
   return user;
 }
 
+/** Authorizes the protected maintenance endpoint using the configured worker secret. */
 export function assertCronSecret(request: Request) {
   const expected = process.env.CRON_SECRET;
   const provided = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");

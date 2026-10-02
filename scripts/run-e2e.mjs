@@ -22,7 +22,7 @@ try {
     await delay(1000);
   }
   if (!ready) throw new Error("Production server did not become ready.");
-  for (const script of ["scripts/verify-railplan.mjs","scripts/verify-railwatch-accounts.mjs"]) {
+  for (const script of ["scripts/verify-railwatch.mjs","scripts/verify-railwatch-accounts.mjs"]) {
     const test = spawn(process.execPath, [script], { env, stdio: "inherit" });
     code = await new Promise((resolve) => { test.once("error", () => resolve(1)); test.once("exit", (value) => resolve(value ?? 1)); });
     if (code) break;

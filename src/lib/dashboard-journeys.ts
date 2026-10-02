@@ -1,4 +1,5 @@
 import {bookingDay,bookingInstant,todayIST,type Planner} from "./travel-planner";
+/** Builds consistent actionable, upcoming, cancellation, and future booking lists. */
 export function dashboardJourneys(planner:Planner,now:Date){
  const today=todayIST(now),active=planner.journeys.filter(j=>!j.archivedAt);
  const upcoming=active.filter(j=>j.date>=today&&(j.status==="booked"||(j.status==="needs_booking"&&bookingInstant(j)<=now))).sort((a,b)=>a.date.localeCompare(b.date));

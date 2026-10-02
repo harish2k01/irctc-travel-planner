@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ transport: vi.fn(), send: vi.fn(), config: vi.fn() }));
 vi.mock("nodemailer", () => ({ default: { createTransport: mocks.transport } }));
 vi.mock("./settings", () => ({ getDeliveryConfiguration: mocks.config }));
-import { sendPasswordResetEmail, sendTestEmail } from "./mail";
+import { sendPasswordResetEmail, sendTestEmail,smtpFailureReason } from "./mail";
 
 describe("email transport", () => {
+  it("explains a provider rejection of the sender without exposing its SMTP response",()=>{expect(smtpFailureReason({code:"EENVELOPE",command:"MAIL FROM",responseCode:550,response:"Private address rejected"})).toContain("address or verified alias");});
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.config.mockResolvedValue({ smtpUrl: "smtp://example.invalid:587", emailFrom: "planner@example.invalid" });
-    mocks.transport.mockReturnValue({ sendMail: mocks.send });
+    mocks.transport.mockReturnValue({ sendMail: mocks.send,close:vi.fn() });
     mocks.send.mockResolvedValue({ accepted: ["user@example.invalid"] });
   });
 

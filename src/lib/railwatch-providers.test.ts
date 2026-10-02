@@ -1,5 +1,5 @@
 import { afterEach,expect,it,vi } from "vitest";
-import { sendWhatsApp } from "./railplan-providers";
+import { sendWhatsApp } from "./railwatch-providers";
 import { EMPTY_PLANNER,type Journey } from "./travel-planner";
 vi.mock("./provider-config",()=>({getProviderConfiguration:async()=>({whatsapp:{accessToken:"fake-token",phoneNumberId:"12345",apiVersion:"v25.0",templateName:"booking_reminder",language:"en_US"}}),whatsappConfigured:()=>true}));
 afterEach(()=>vi.unstubAllGlobals());

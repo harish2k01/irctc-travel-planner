@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { requestIpHash } from "@/lib/rate-limit";
 
+/** Records an administrative security event with actor and target identifiers. */
 export async function writeAudit(input: {
   actorId?: string;
   action: string;

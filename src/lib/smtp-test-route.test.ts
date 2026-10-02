@@ -1,7 +1,7 @@
 import { beforeEach,expect,it,vi } from "vitest";
 const mocks=vi.hoisted(()=>({admin:vi.fn(),send:vi.fn(),limit:vi.fn()}));
 vi.mock("./auth",()=>({requireAdmin:mocks.admin}));
-vi.mock("./mail",()=>({sendTestEmail:mocks.send}));
+vi.mock("./mail",async importOriginal=>({...await importOriginal<typeof import("./mail")>(),sendTestEmail:mocks.send}));
 vi.mock("./rate-limit",()=>({enforceRateLimit:mocks.limit}));
 import { POST } from "@/backend/routes/admin/settings/email/test/route";
 import { ApiError } from "./http";

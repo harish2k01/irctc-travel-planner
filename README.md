@@ -25,7 +25,7 @@ Scheduled work runs inside the persistent backend. Once a minute it completes bo
 
 ## Deployment and providers
 
-[Deployment guide](docs/railplan-deployment.md) covers GHCR releases, manual Kubernetes hosting, secrets, backups, WhatsApp setup, and Google Calendar OAuth. Providers can be configured later.
+[Deployment guide](docs/railwatch-deployment.md) covers GHCR releases, manual Kubernetes hosting, secrets, backups, WhatsApp setup, and Google Calendar OAuth. Providers can be configured later.
 
 The dashboard is at `/`; journeys, calendar, routines, holidays, tickets, and admin pages have their own routes. User Settings manages profile details, phone number, preferences, connections, and passwords. Admin Settings contains General, Integrations, and User Management. Administrators control shared booking rules and features, configure encrypted Telegram/Google/WhatsApp credentials in the app, create or invite users, and manage roles and access. Each account has a private workspace.
 
@@ -44,3 +44,17 @@ Ticket extraction reads PDF text and QR codes, and uses local browser OCR for sc
 Like portfolio-next, every PR needs exactly one label: `major`, `minor`, or `patch`. After merge, validation runs before release reconciliation assigns the next version to each merged PR in order. The release workflow publishes that exact commit to GHCR with `vX.Y.Z`, `X.Y.Z`, full commit-SHA, and latest aliases. The `image.json` release asset records the digest for manual deployment. Retries reuse an existing commit image. The fresh rebuild is a major release because it requires an empty database.
 
 Deployment charts and Argo CD definitions are being kept locally until GitOps deployment is enabled; this PR does not include them.
+
+## Ticket files and retention
+
+Uploaded PDF and image originals are encrypted in PostgreSQL's `RailFile` table. They are not stored on a frontend or backend pod filesystem. Open **View Ticket** in Ticket Vault or a journey's attachments to read the original inside RailWatch; PDFs support page navigation. Download and remove actions use the attachment menu.
+
+The backend scheduler permanently removes original files seven days after cancellation or completion, including for disabled accounts. It also removes their attachment references atomically. Journey history, entered ticket details, and notes remain available in the archive. Historical database backups retain their own independent retention policy.
+
+## Operations and code navigation
+
+Frontend API gateway logs and backend request logs share `x-request-id`, with method, route, status, and duration. Successful health checks are suppressed. Scheduler, Telegram polling, Google synchronization, SMTP delivery, reminder failures, and file cleanup emit structured JSON to stdout/stderr. Logs exclude credentials, cookies, ticket contents, and request bodies. Inspect them with `kubectl -n railwatch logs deployment/railwatch-frontend` or `kubectl -n railwatch logs deployment/railwatch-backend`.
+
+SMTP authentication can succeed even when a sender address is rejected. The Sender field must use an address or verified alias authorized for the authenticated account. The test action reports sender rejection separately from authentication and connectivity failures.
+
+`src/backend/server.ts` handles API routing; `src/backend/scheduler.ts` elects a scheduler leader. `src/lib/railwatch-store.ts` manages encrypted workspaces and concurrent edits; `travel-planner.ts` owns planning and journey lifecycle rules; `ticket-retention.ts` selects expired originals; `railwatch-jobs.ts` dispatches reminders. UI components live under `src/components/travel-planner`. Named methods include purpose comments. Existing database table names and applied migration directory names are intentionally preserved to keep upgrades compatible.

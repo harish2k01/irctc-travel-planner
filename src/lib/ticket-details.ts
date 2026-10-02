@@ -1,6 +1,7 @@
 import { isDay, type Journey } from "./travel-planner";
 
 export type TicketDetails = Partial<Pick<Journey, "from" | "to" | "date" | "trainNumber" | "trainName" | "travelClass" | "pnr" | "coach" | "seat" | "berth" | "departure">>;
+/** Extracts validated ticket-field suggestions from QR JSON, printed text, or OCR. */
 export function parseTicketDetails(raw: string): TicketDetails {
   const text = raw.replace(/\r/g, "").replace(/[,;]\s*(?=(?:PNR|Train\s*(?:No|Number|Name)|From|To|Class|Journey\s*Date|Departure|Coach|Seat|Berth)\s*[:=])/gi,"\n").replace(/\b(TrainNo|TrainName|JourneyDate|DepartureTime|CoachNo|SeatNo|BerthType)\b/g, label=>label.replace(/([a-z])([A-Z])/g,"$1 $2")).replace(/\b(From|To|Class|Coach|Seat No|Berth Type|Train No|Train Name|Journey Date|Departure Time)\s*=/gi,"$1:"); const details: TicketDetails = {};
   let json: Record<string, unknown> | undefined;
@@ -8,6 +9,7 @@ export function parseTicketDetails(raw: string): TicketDetails {
   if (json) {
     const normalized: Record<string, unknown> = {};
     const normalizeKey=(key:string)=>key.toLowerCase().replace(/[^a-z0-9]/g,"");
+        /** Collects supported ticket fields from nested QR objects and the first passenger record. */
     function flatten(value:Record<string,unknown>,depth=0){if(depth>8)return;for(const [key,item] of Object.entries(value)){if(typeof item === "string"||typeof item === "number")normalized[normalizeKey(key)]=item;else if(item&&typeof item==="object"&&!Array.isArray(item))flatten(item as Record<string,unknown>,depth+1);else if(Array.isArray(item)&&item[0]&&typeof item[0]==="object")flatten(item[0] as Record<string,unknown>,depth+1);}}
     flatten(json);
     const aliases: Record<keyof TicketDetails, string[]> = { from: ["from", "source", "boardingStation"], to: ["to", "destination"], date: ["date", "journeyDate", "travelDate"], trainNumber: ["trainNumber", "trainNo", "train_no"], trainName: ["trainName", "train_name"], travelClass: ["travelClass", "class"], pnr: ["pnr", "PNR", "pnrNumber", "pnrNo"], coach: ["coach", "coachNumber", "coachNo"], seat: ["seat", "seatNumber", "seatNo", "berthNumber", "berthNo"], berth: ["berth", "berthType"], departure: ["departure", "departureTime", "scheduledDeparture", "boardingTime"] };

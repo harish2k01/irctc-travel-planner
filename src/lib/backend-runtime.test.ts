@@ -37,6 +37,18 @@ describe("dedicated backend runtime", () => {
     expect(connection.release).toHaveBeenCalledTimes(2);
   });
 
+  it("correlates backend API logs without recording query secrets or cookies",async()=>{
+    const log=vi.spyOn(console,"info").mockImplementation(()=>{}),server=createBackend();
+    try{
+      const id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+      const response=await server.inject({method:"GET",url:"/api/version?token=private-value",headers:{"x-request-id":id,cookie:"session=private-cookie"}});
+      expect(response.headers["x-request-id"]).toBe(id);
+      const events=log.mock.calls.map(call=>JSON.parse(call[0]));
+      expect(events).toContainEqual(expect.objectContaining({event:"backend.request",requestId:id,status:200,method:"GET",route:"/api/version"}));
+      expect(JSON.stringify(events)).not.toContain("private-");
+    }finally{await server.close();log.mockRestore();}
+  });
+
   it("serves API health independently and enforces authentication and upload limits", async () => {
     const server = createBackend();
     try {
@@ -44,7 +56,7 @@ describe("dedicated backend runtime", () => {
       expect((await server.inject({ method: "GET", url: "/api/railwatch/workspace" })).statusCode).toBe(401);
       const invalid = await server.inject({ method: "POST", url: "/api/auth/login", headers: { origin: "https://foreign.invalid", "x-forwarded-host": "foreign.invalid", "content-type": "application/json" }, payload: "{}" });
       expect(invalid.statusCode).toBe(403);
-      const oversize = await server.inject({ method: "PUT", url: "/api/railwatch/workspace", headers: { "content-type": "application/json" }, payload: "x".repeat(8_000_001) });
+      const oversize = await server.inject({ method: "PUT", url: "/api/railwatch/workspace", headers: { "content-type": "application/json" }, payload: "x".repeat(11_000_001) });
       expect(oversize.statusCode).toBe(413);
       expect(oversize.json().error.code).toBe("PAYLOAD_TOO_LARGE");
     } finally { await server.close(); }

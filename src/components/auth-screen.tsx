@@ -9,11 +9,13 @@ import s from "./auth-screen.module.css";
 
 type AuthMode = "firstSignup" | "login" | "resetPassword" | "tokenPassword" | "missingDatabase";
 
+/** Extracts a safe authentication error message from the API response. */
 function errorMessage(payload: unknown) {
   const value = payload as { error?: string | { message?: string }; data?: { message?: string } };
   return typeof value.error === "string" ? value.error : value.error?.message ?? "The request could not be completed.";
 }
 
+/** Handles sign-in, signup, initial administrator creation, and password-reset requests. */
 export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: AuthMode; allowSignups: boolean; token?: string; tokenType?: "invitation" | "reset" }) {
   const router = useRouter();
   const [view, setView] = useState<"login" | "signup" | "reset" | "forgot">(
@@ -23,6 +25,7 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
 
+    /** Validates the active form and submits its account-scoped changes. */
   async function submit(endpoint: string, payload: Record<string, unknown>) {
     setBusy(true);
     setMessage(undefined);
@@ -40,6 +43,7 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
     }
   }
 
+    /** Requests a password-reset link without revealing whether an account exists. */
   async function submitForgot(formData: FormData) {
     setBusy(true);
     setError(undefined);
@@ -109,6 +113,7 @@ export function AuthScreen({ mode, allowSignups, token, tokenType }: { mode: Aut
   );
 }
 
+/** Provides the shared account-authentication screen layout. */
 function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <main className={`${s.root} ${s.authPage}`}>
@@ -121,10 +126,12 @@ function AuthShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Associates a form control with its generated label and optional help text. */
 function Field({ icon: Icon, label, ...input }: { icon: React.ComponentType<{ className?: string }>; label: string; name: string; type?: string; autoComplete?: string }) {
   return <label className={s.field}>{label}<span className={s.authInput}><Icon className="h-4 w-4" /><input required {...input} /></span></label>;
 }
 
+/** Renders a primary authentication action with its busy state. */
 function Primary({ busy, disabled, children }: { busy: boolean; disabled?: boolean; children: React.ReactNode }) {
   return <button disabled={busy || disabled} className={`${s.button} ${s.primary}`}>{busy ? "Please wait..." : children}</button>;
 }

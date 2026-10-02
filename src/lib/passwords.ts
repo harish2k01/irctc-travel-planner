@@ -5,6 +5,7 @@ const COST = 16_384;
 const BLOCK_SIZE = 8;
 const PARALLELIZATION = 1;
 
+/** Derives a password hash using the configured password-work parameters. */
 function derive(password: string, salt: string, options?: { N?: number; r?: number; p?: number }) {
   return new Promise<Buffer>((resolve, reject) => {
     scryptCallback(password, salt, KEY_LENGTH, options ?? {}, (error, key) => {
@@ -14,12 +15,14 @@ function derive(password: string, salt: string, options?: { N?: number; r?: numb
   });
 }
 
+/** Hashes a password with a fresh random salt and versioned parameters. */
 export async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const key = await derive(password, salt, { N: COST, r: BLOCK_SIZE, p: PARALLELIZATION });
   return `scrypt:v1:${COST}:${BLOCK_SIZE}:${PARALLELIZATION}:${salt}:${key.toString("hex")}`;
 }
 
+/** Verifies a password using the stored parameters and a constant-time comparison. */
 export async function verifyPassword(password: string, storedHash: string | null | undefined) {
   if (!storedHash) return false;
   const parts = storedHash.split(":");

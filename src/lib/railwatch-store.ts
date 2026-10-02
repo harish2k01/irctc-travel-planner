@@ -5,11 +5,15 @@ import { getFeaturePolicy } from "./settings";
 import type { FeaturePolicy } from "./feature-policy";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
+import {expiredTicketFiles} from "./ticket-retention";
+import {logger} from "./logger";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { ApiError } from "./http";
 import { EMPTY_PLANNER, extendRoutines, reconcileJourneyLifecycle, migratePlanner, plannerSchema, todayIST, type Planner } from "./travel-planner";
 
+/** Decrypts and migrates a stored planner payload to the current schema. */
 export function decodeWorkspace(payload: string) { return migratePlanner(JSON.parse(decryptSecret(payload)!)); }
+/** Validates planner ownership-independent invariants and applies shared booking rules. */
 export function validateWorkspace(value: unknown): Planner {
   const planner = migratePlanner(value);
   for (const items of [planner.journeys, planner.rules, planner.holidays]) if (new Set(items.map(x => x.id)).size !== items.length) throw new ApiError(400,"Duplicate record identifiers.");
@@ -19,28 +23,35 @@ export function validateWorkspace(value: unknown): Planner {
   const days = planner.settings.bookingWindowDays;
   return plannerSchema.parse({ ...planner, journeys: planner.journeys.map(j => ({...j,windowDays:days,originOffset:0,bookingDateOverride:undefined})), rules:planner.rules.map(r=>({...r,windowDays:days})) });
 }
+/** Applies administrator feature policy and the current account connection details. */
 export function applyAccountSettings(planner:Planner,policy:FeaturePolicy,phoneNumber:string,telegram:{chatId:string|null;enabled:boolean;providerId:string}|null=null,telegramProviderId?:string):Planner {
 return {...planner,settings:{...planner.settings,telegramChatId:policy.telegramEnabled&&policy.remindersEnabled?telegramRecipient(telegram,telegramProviderId):"",telegramProviderId:telegramProviderId??"",telegramEnabled:Boolean(policy.telegramEnabled&&policy.remindersEnabled&&telegramRecipient(telegram,telegramProviderId)),weekStartsOn:policy.weekStartsOn,routineHorizonMode:policy.routineHorizonMode,routineMonthsAhead:policy.routineMonthsAhead,routineTicketCount:policy.routineTicketCount,bookingWindowDays:policy.bookingWindowDays,whatsappNumber:phoneNumber,whatsappEnabled:planner.settings.whatsappEnabled&&policy.remindersEnabled&&policy.whatsappEnabled&&Boolean(phoneNumber)},journeys:planner.journeys.map(j=>({...j,windowDays:policy.bookingWindowDays,originOffset:0,bookingDateOverride:undefined})),rules:planner.rules.map(r=>({...r,windowDays:policy.bookingWindowDays}))};
 }
+/** Locks the account row so workspace and attachment changes are serialized. */
 async function lock(tx: Prisma.TransactionClient, userId: string) { await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`; }
+/** Loads the private workspace and reconciles routines, journey lifecycle, and expired ticket files atomically. */
 export async function loadWorkspace(userId: string, now = new Date()) {
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
-  return prisma.$transaction(async tx => {
+  let deletedFiles=0;const result=await prisma.$transaction(async tx => {
     await lock(tx,userId);
     const user=await tx.user.findUniqueOrThrow({where:{id:userId}});const telegram=await tx.railTelegram.findUnique({where:{userId}});
     const initial=applyAccountSettings(EMPTY_PLANNER,policy,user.phoneNumber??"",telegram,telegramProviderId);
     const existing = await tx.railWorkspace.findUnique({where:{userId}});
     if (!existing) { const record = await tx.railWorkspace.create({data:{userId,payload:encryptSecret(JSON.stringify(initial))}}); return {planner:initial,revision:record.version}; }
-    const planner=decodeWorkspace(existing.payload); const extended=reconcileJourneyLifecycle(extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??"",telegram,telegramProviderId),todayIST(now)),todayIST(now));
+    const planner=decodeWorkspace(existing.payload); const retention=expiredTicketFiles(reconcileJourneyLifecycle(extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??"",telegram,telegramProviderId),todayIST(now)),todayIST(now)),todayIST(now));const extended=retention.planner;
+    if(retention.ids.length){const removed=await tx.railFile.deleteMany({where:{userId,id:{in:retention.ids}}});deletedFiles=removed.count;}
     if (!sameContent(extended, planner)) { const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(extended)),version:{increment:1}}}); return {planner:extended,revision:record.version}; }
     return {planner,revision:existing.version};
   },{timeout:20000});
+  if(deletedFiles)logger.info("tickets.retention_deleted",{files:deletedFiles});
+  return result;
 }
+/** Validates ownership, merges compatible concurrent edits, and persists the encrypted workspace atomically. */
 export async function saveWorkspace(userId: string, value: unknown, revision: number, base?: unknown) {
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
   const input=plannerSchema.parse(value);
   if(input.settings.whatsappEnabled&&(!policy.whatsappEnabled||!policy.remindersEnabled))throw new ApiError(403,"WhatsApp reminders are disabled by the administrator.","FEATURE_DISABLED");
-  return prisma.$transaction(async tx => {
+  let deletedFiles=0;const result=await prisma.$transaction(async tx => {
     await lock(tx,userId); const user=await tx.user.findUniqueOrThrow({where:{id:userId}});const telegram=await tx.railTelegram.findUnique({where:{userId}});
     let planner=validateWorkspace(applyAccountSettings(input,policy,user.phoneNumber??"",telegram,telegramProviderId));
     const current=await tx.railWorkspace.findUnique({where:{userId}});
@@ -54,6 +65,8 @@ export async function saveWorkspace(userId: string, value: unknown, revision: nu
       } catch(error) { if(error instanceof WorkspaceConflict) throw new ApiError(409,error.message,"VERSION_CONFLICT"); throw error; }
     }
     planner=reconcileJourneyLifecycle(planner,todayIST());
+    const retention=expiredTicketFiles(planner,todayIST());planner=retention.planner;
+    if(retention.ids.length){const removed=await tx.railFile.deleteMany({where:{userId,id:{in:retention.ids}}});deletedFiles=removed.count;}
     const files=planner.journeys.flatMap(j=>j.attachments??[]);
     if (new Set(files.map(f=>f.id)).size !== files.length) throw new ApiError(400,"Each attachment must belong to one journey.");
     const owned=await tx.railFile.findMany({where:{userId,id:{in:files.map(f=>f.id)}},select:{id:true,name:true,type:true,size:true}});
@@ -61,4 +74,6 @@ export async function saveWorkspace(userId: string, value: unknown, revision: nu
     const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(planner)),version:{increment:1}}});
     return {planner,revision:record.version};
   },{timeout:20000});
+  if(deletedFiles)logger.info("tickets.retention_deleted",{files:deletedFiles});
+  return result;
 }

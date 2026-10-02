@@ -1,10 +1,12 @@
 type LogLevel = "info" | "warn" | "error";
 
+/** Writes structured service log events using caller-supplied metadata without request bodies or secrets. */
 function write(level: LogLevel, event: string, context: Record<string, unknown> = {}) {
   const entry = JSON.stringify({
     timestamp: new Date().toISOString(),
     level,
     event,
+    service:process.env.RAILWATCH_SERVICE??"application",
     ...context,
   });
 

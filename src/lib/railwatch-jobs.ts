@@ -1,4 +1,5 @@
 import { recordInAppReminder } from "./in-app-notifications";
+import {logger} from "./logger";
 import { pollTelegram } from "./telegram-polling";
 import { getProviderConfiguration,telegramConfigured } from "./provider-config";
 import { sendTelegram } from "./telegram";
@@ -6,10 +7,11 @@ import { createHash,randomUUID } from "node:crypto";
 import { encryptSecret } from "./crypto";
 import { prisma } from "./db";
 import { getFeaturePolicy } from "./settings";
-import { applyAccountSettings,decodeWorkspace,loadWorkspace } from "./railplan-store";
+import { applyAccountSettings,decodeWorkspace,loadWorkspace } from "./railwatch-store";
 import { effectiveReminders,reminderPreview,todayIST,formatDay,bookingDay,type Planner } from "./travel-planner";
-import { sendWhatsApp,whatsappReady } from "./railplan-providers";
-import { syncGoogleCalendars } from "./railplan-google";
+import { sendWhatsApp,whatsappReady } from "./railwatch-providers";
+import { syncGoogleCalendars } from "./railwatch-google";
+/** Builds durable reminder identities and due times from active journey preferences. */
 export function reminderJobs(planner:Planner,now:Date){
   const result:{key:string;kind:string;dueAt:Date;journeyId:string;message:string}[]=[];
   for(const j of planner.journeys){if(j.archivedAt||j.status!=="needs_booking"||j.date<todayIST(now))continue;
@@ -23,11 +25,12 @@ export function reminderJobs(planner:Planner,now:Date){
     }
   }return result;
 }
-export async function processRailplan(now=new Date()){
+/** Polls Telegram, refreshes workspaces, leases due reminders, and synchronizes calendars. */
+export async function processRailWatch(now=new Date()){
   await pollTelegram();
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
-  const workspaces=await prisma.railWorkspace.findMany({where:{user:{isActive:true}},select:{userId:true}});
-  for(const {userId} of workspaces){const {planner}=await loadWorkspace(userId,now);const jobs=policy.remindersEnabled?reminderJobs(planner,now).filter(j=>(j.kind!=="WHATSAPP"||policy.whatsappEnabled)&&(j.kind!=="TELEGRAM"||policy.telegramEnabled)):[];
+  const workspaces=await prisma.railWorkspace.findMany({select:{userId:true,user:{select:{isActive:true}}}});
+  for(const {userId,user} of workspaces){const {planner}=await loadWorkspace(userId,now);if(!user.isActive)continue;const jobs=policy.remindersEnabled?reminderJobs(planner,now).filter(j=>(j.kind!=="WHATSAPP"||policy.whatsappEnabled)&&(j.kind!=="TELEGRAM"||policy.telegramEnabled)):[];
     await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;const current=await tx.railWorkspace.findUniqueOrThrow({where:{userId}});const owner=await tx.user.findUniqueOrThrow({where:{id:userId}});const effective=applyAccountSettings(decodeWorkspace(current.payload),policy,owner.phoneNumber??"",await tx.railTelegram.findUnique({where:{userId}}),telegramProviderId);const actual=policy.remindersEnabled?reminderJobs(effective,now).filter(j=>(j.kind!=="WHATSAPP"||policy.whatsappEnabled)&&(j.kind!=="TELEGRAM"||policy.telegramEnabled)):[];
       await tx.railJob.updateMany({where:{userId,state:{in:["PENDING","FAILED"]},key:{notIn:actual.map(j=>j.key)}},data:{state:"CANCELLED",lease:null,leaseUntil:null}});
       await tx.railJob.updateMany({where:{userId,state:"CANCELLED",key:{in:actual.map(j=>j.key)}},data:{state:"PENDING",attempts:0,lastError:null,lease:null,leaseUntil:null}});
@@ -45,8 +48,8 @@ export async function processRailplan(now=new Date()){
       if(job.kind==="IN_APP"){if(await recordInAppReminder({id:job.id,userId:job.userId,lease,journeyId:actual.journeyId,dueAt:actual.dueAt},now))sent++;continue;}
       const journey=planner!.journeys.find(j=>j.id===actual.journeyId)!;
       const providerId=job.kind==="WHATSAPP"?await sendWhatsApp(planner!.settings.whatsappNumber,journey):job.kind==="TELEGRAM"?await sendTelegram(planner!.settings.telegramChatId,actual.message,planner!.settings.telegramProviderId):undefined;
-      await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"SENT",sentAt:now,providerId,lastError:null,lease:null,leaseUntil:null}});sent++;
-    }catch{await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"FAILED",dueAt:new Date(now.getTime()+Math.min(60,2**(job.attempts+1))*60000),lastError:"Delivery failed. Check the provider configuration.",lease:null,leaseUntil:null}});}
+      await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"SENT",sentAt:now,providerId,lastError:null,lease:null,leaseUntil:null}});sent++;logger.info("reminder.delivered",{jobId:job.id,kind:job.kind});
+    }catch(error){logger.error("reminder.delivery_failed",{jobId:job.id,kind:job.kind,attempt:job.attempts,errorType:error instanceof Error?error.name:"UnknownError"});await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"FAILED",dueAt:new Date(now.getTime()+Math.min(60,2**(job.attempts+1))*60000),lastError:"Delivery failed. Check the provider configuration.",lease:null,leaseUntil:null}});}
   }
   const calendars=await syncGoogleCalendars();return {accounts:workspaces.length,sent,calendars};
 }

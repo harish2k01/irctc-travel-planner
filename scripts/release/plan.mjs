@@ -55,9 +55,9 @@ for (const plan of dryRun ? [] : plans) {
   });
   console.log(`Created ${plan.tag} from #${plan.pr} at ${plan.sha}`);
 }
-// Reconcile only unfinished Railplan publications; historical releases stay untouched.
+// Reconcile only unfinished RailWatch publications; historical releases stay untouched.
 const unfinished = releases
-  .filter((r) => (r.body?.startsWith("RailWatch release from #") || r.body?.startsWith("Railplan release from #")) && !r.assets.some((asset) => asset.name === "image.json"))
+  .filter((r) => (r.body?.startsWith("RailWatch release from #") || r.body?.startsWith("RailWatch release from #")) && !r.assets.some((asset) => asset.name === "image.json"))
   .map((r) => ({
     tag: r.tag_name,
     sha: git("rev-parse", `${r.tag_name}^{commit}`),

@@ -3,24 +3,32 @@ import { attachmentSchema, type TicketAttachment } from "./travel-planner";
 import { parseTicketDetails, type TicketDetails } from "./ticket-details";
 import { recognizeTicket } from "./ticket-ocr";
 
+/** Calls the authenticated attachment endpoint and exposes safe storage errors. */
 async function fileRequest(id:string,init?:RequestInit){const response=await fetch(`/api/railwatch/files/${encodeURIComponent(id)}`,init);if(!response.ok){const value=await response.json().catch(()=>({}));throw new Error(value.error?.message??"Ticket storage request failed.");}return response;}
-export async function saveTicketFile(id: string, blob: Blob, name?:string) { {await fileRequest(id,{method:"PUT",headers:{"Content-Type":blob.type,"X-File-Name":encodeURIComponent(name??(blob instanceof File?blob.name:"ticket"))},body:blob});return;} }
-export async function getTicketFile(id: string): Promise<Blob | undefined> { {const response=await fetch(`/api/railwatch/files/${encodeURIComponent(id)}`,{cache:"no-store"});if(response.status===404)return undefined;if(!response.ok)throw new Error("Could not retrieve this ticket file.");return response.blob();} }
-export async function deleteTicketFile(id: string) { {await fileRequest(id,{method:"DELETE"});return;} }
+/** Stores a validated attachment in encrypted account storage. */
+export async function saveTicketFile(id: string, blob: Blob, name?:string) { await fileRequest(id,{method:"PUT",headers:{"Content-Type":blob.type,"X-File-Name":encodeURIComponent(name??(blob instanceof File?blob.name:"ticket"))},body:blob}); }
+/** Fetches an account-owned original without browser caching. */
+export async function getTicketFile(id: string): Promise<Blob | undefined> { const response=await fetch(`/api/railwatch/files/${encodeURIComponent(id)}`,{cache:"no-store"});if(response.status===404)return undefined;if(!response.ok)throw new Error("Could not retrieve this ticket file.");return response.blob(); }
+/** Deletes an unlinked account-owned original file. */
+export async function deleteTicketFile(id: string) { await fileRequest(id,{method:"DELETE"}); }
+/** Validates attachment metadata and creates a unique storage identifier. */
 export function validateTicketFile(file:File):TicketAttachment {return attachmentSchema.parse({id:crypto.randomUUID(),name:file.name,type:file.type,size:file.size,createdAt:new Date().toISOString()});}
+/** Downloads the original attachment and releases its temporary object URL. */
 export async function downloadTicketFile(attachment: TicketAttachment, staged?: Blob) {
   const blob = staged ?? await getTicketFile(attachment.id); if (!blob) throw new Error("The original file is missing from your account. Upload it again, or restore a backup that includes files.");
   const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = attachment.name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+/** Reads a ticket QR code from rendered canvas pixels. */
 async function decodeCanvas(canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d", { willReadFrequently: true }); if (!context) return "";
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
   const { default: jsQR } = await import("jsqr"); return jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: "attemptBoth" })?.data ?? "";
 }
+/** Combines PDF text, QR payloads, and local OCR into reviewable ticket suggestions. */
 export async function extractTicketFile(file: File,progress?:(message:string)=>void): Promise<{ details: TicketDetails; message: string }> {
   if (file.type === "application/pdf") {
     const pdfjs = await import("pdfjs-dist");
-    pdfjs.GlobalWorkerOptions.workerSrc = `/railplan/pdf.worker.min.mjs?v=${pdfjs.version}`;
+    pdfjs.GlobalWorkerOptions.workerSrc = `/railwatch/pdf.worker.min.mjs?v=${pdfjs.version}`;
     const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), disableFontFace: true, useSystemFonts: true });
     const document = await task.promise; let text = "", qr = "",ocr="";
     try {
@@ -50,6 +58,7 @@ export async function extractTicketFile(file: File,progress?:(message:string)=>v
     return { details, message: Object.keys(details).length ? "Readable QR details detected. Review before applying." : qr ? "The QR payload is not recognizable ticket data (it may be encrypted). File can still be saved; use manual entry." : "No readable QR found. Upload a clear cropped QR image, or enter the details manually." };
   } finally { bitmap.close(); }
 }
+/** Exports workspace metadata and owned originals within the backup size limit. */
 export async function exportTicketBackup(planner: import("./travel-planner").Planner) {
   const attachmentFiles: { id: string; data: string }[] = []; let size = 0;
   const ids = new Set<string>();
@@ -61,6 +70,7 @@ export async function exportTicketBackup(planner: import("./travel-planner").Pla
   return JSON.stringify({ ...planner, attachmentFiles });
 }
 
+/** Validates embedded backup originals against their declared attachment metadata. */
 export function decodeBackupFiles(value: unknown, planner: import("./travel-planner").Planner): { id: string; blob: Blob }[] {
   const embedded = (value as { attachmentFiles?: unknown }).attachmentFiles;
   if (embedded === undefined) return [];
