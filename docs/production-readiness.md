@@ -1,0 +1,39 @@
+# Product scope and production readiness
+
+Reviewed against merged main on 2 October 2026. This is a current implementation audit, not a claim that every production gate has been met. The original design roadmap is available in Git history; obsolete preview documents and screens are not restored.
+
+## Implemented core
+
+- Private account workspaces, administrator/user roles, signup controls, invitations, temporary passwords, resets and atomic first-administrator creation.
+- Dedicated frontend, persistent backend and PostgreSQL; server-controlled feature availability and encrypted provider credentials.
+- Journey planning without requiring a PNR, booking state, automatic completion, archived cancellation history and linked recurring onward/return routines.
+- Configurable booking window, Sunday-first calendar, rolling routine horizon, holidays/leave, CSV import and iCalendar export.
+- In-app and Telegram reminders, deduplication, durable leases, bounded retries, delivery failure notifications and outbound Telegram polling.
+- Local PDF text/QR/OCR extraction, account-owned PDF storage/viewing, seven-day original-file retention, and image extraction without storage.
+- SMTP invitations/reset/test delivery, branded HTML, structured API/provider/scheduler logs, and release/version endpoints.
+- PR unit/database/browser tests, CodeQL, build checks and immutable release images.
+
+## Remaining from the original plan
+
+| Area | Current limitation and next work |
+| --- | --- |
+| Identity verification | Public signup and email changes do not verify ownership through a verification email. Invitation/reset links exist, but do not replace a complete verification flow. |
+| Reminder recovery | Jobs have leases, retries and eligibility checks. Schedules more than 24 hours old are excluded; add explicit missed-reminder/outage handling and an operator retry view. |
+| Notification control | The header inbox has read/dismiss and failure states. A paginated notification history, snooze, quiet hours and detailed per-journey delivery timeline remain absent. |
+| Email booking reminders | SMTP currently sends account invitations, password resets and test messages. Booking jobs use in-app, Telegram or WhatsApp; SMTP booking reminders are not implemented. |
+| Large accounts | The API reads/saves an encrypted whole workspace and the browser filters it. Server pagination/search, accurate paginated aggregates and realistic account-scale performance tests remain. |
+| Calendar and planning | CSV holiday import and ICS export exist. ICS holiday import, a mobile agenda, overflow accessibility and actionable duplicate/overlap/leave-conflict suggestions remain. |
+| Editing and navigation | Journey dialogs exist, but linkable individual journey URLs and unsaved-change protection still need implementation. |
+| Production operations | Logs and readiness checks exist. Queue/heartbeat/backup-age metrics and alerts, agreed latency/lateness targets, an off-cluster restore rehearsal, rollback rehearsal and broader accessibility/visual-regression validation remain gates. |
+
+The operational items above require evidence in the current installation. A successful build or unit test is not proof of backup recoverability or provider delivery.
+
+## Decisions that superseded the original design
+
+Dashboard and Kanban replaced the proposed Today/Trips table. Holidays & Leave remains a separate page. Telegram is the chosen first external reminder channel; Discord is not an outstanding requirement. Week start and booking-window controls are shared administrator settings. Routine horizon defaults to six months. Browser push and automatic ticket booking remain outside scope.
+
+PNR providers, offline ticket access and Tatkal-specific planning were optional follow-up ideas, not blockers for the planning/reminder core. PDF import, originally optional, is now implemented. Google Calendar and WhatsApp adapters exist, but their external setup and actual live delivery must be verified when they are enabled.
+
+## Cleanup boundaries
+
+No interactive prototype route, demo workspace seed or browser-persisted prototype planner ships with the app. Negative tests for retired routes and synthetic ticket fixtures remain intentional regression coverage. Database migrations, schema compatibility, backup import and workspace normalization are retained to protect saved data. Test mocks, form placeholders, local development defaults and request AsyncLocalStorage are not prototype features.

@@ -1,6 +1,6 @@
 # RailWatch
 
-A self-hosted train travel planner with configurable recurring journeys, booking reminders, a Kanban board, calendar, company holidays and personal leave, and private PDF/QR ticket storage.
+A self-hosted train travel planner with configurable recurring journeys, booking reminders, a Kanban board, calendar, company holidays and personal leave, and private PDF ticket storage with local image/QR extraction.
 
 ## Run locally
 
@@ -33,7 +33,7 @@ Set `APP_URL` to the public base URL at runtime so invitation links, password re
 
 ## Tickets and history
 
-Ticket extraction reads PDF text and QR codes, and uses local browser OCR for scanned PDFs and ticket images. English recognition assets ship with the app; recognition does not send ticket pixels to an external service. Review detected details before applying them. Completed journeys appear in History and archived cancellations retain their ticket details and files.
+Ticket extraction reads PDF text and QR codes, and uses local browser OCR for scanned PDFs and ticket images. English recognition assets ship with the app; recognition does not send ticket pixels to an external service. Review detected details before applying them. Completed journeys appear in History and archived cancellations retain entered ticket details. Original PDFs are deleted seven days after cancellation or completion.
 
 ## Verify
 
@@ -41,9 +41,9 @@ Ticket extraction reads PDF text and QR codes, and uses local browser OCR for sc
 
 ## Releases
 
-Like portfolio-next, every PR needs exactly one label: `major`, `minor`, or `patch`. After merge, validation runs before release reconciliation assigns the next version to each merged PR in order. The release workflow publishes that exact commit to GHCR with `vX.Y.Z`, `X.Y.Z`, full commit-SHA, and latest aliases. The `image.json` release asset records the digest for manual deployment. Retries reuse an existing commit image. The fresh rebuild is a major release because it requires an empty database.
+Every PR needs exactly one label: `major`, `minor`, or `patch`. After merge, validation runs before release reconciliation assigns the next version to each merged PR in order. The release workflow publishes that exact commit to GHCR with `vX.Y.Z`, `X.Y.Z`, full commit-SHA, and latest aliases. The `image.json` release asset records the digest for manual deployment. Retries reuse an existing commit image. Apply the migrations for each release; ordinary upgrades preserve the existing database.
 
-Deployment charts and Argo CD definitions are being kept locally until GitOps deployment is enabled; this PR does not include them.
+Deployment charts and Argo CD definitions remain local until GitOps deployment is enabled.
 
 ## Ticket files and retention
 
@@ -58,3 +58,7 @@ Frontend API gateway logs and backend request logs share `x-request-id`, with me
 SMTP authentication can succeed even when a sender address is rejected. The Sender field must use an address or verified alias authorized for the authenticated account. The test action reports sender rejection separately from authentication and connectivity failures.
 
 `src/backend/server.ts` handles API routing; `src/backend/scheduler.ts` elects a scheduler leader. `src/lib/railwatch-store.ts` manages encrypted workspaces and concurrent edits; `travel-planner.ts` owns planning and journey lifecycle rules; `ticket-retention.ts` selects expired originals; `railwatch-jobs.ts` dispatches reminders. UI components live under `src/components/travel-planner`. Named methods include purpose comments. Existing database table names and applied migration directory names are intentionally preserved to keep upgrades compatible.
+
+## Product scope and readiness
+
+The current application implements the planning and reminder core. [Production readiness](docs/production-readiness.md) records remaining work and decisions that replaced the original design plan. Demo data and interactive prototype routes are not part of the shipped app. Synthetic data remains only in test fixtures.
