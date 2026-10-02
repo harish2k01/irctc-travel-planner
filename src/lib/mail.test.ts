@@ -33,7 +33,7 @@ describe("email transport", () => {
 
   it("sends ownership and booking emails with HTML actions and plain-text fallbacks",async()=>{
     await sendVerificationEmail("user@example.invalid","verification-token");
-    expect(mocks.send).toHaveBeenLastCalledWith(expect.objectContaining({html:expect.stringContaining("/verify-email?token=verification-token"),text:expect.stringContaining("24 hours")}));
+    expect(mocks.send).toHaveBeenLastCalledWith(expect.objectContaining({html:expect.stringContaining("/verify-email?token=verification-token"),text:expect.stringContaining("/verify-email?token=verification-token")}));
     await sendBookingEmail("user@example.invalid",{id:"j",from:"MDU",to:"MS",date:"2026-12-01",departure:"20:00",train:"",pnr:"",travelClass:"SL",windowDays:60,originOffset:0,status:"needs_booking",notes:""});
     expect(mocks.send).toHaveBeenLastCalledWith(expect.objectContaining({html:expect.stringContaining("Open Journeys"),text:expect.stringContaining("Booking Date: 2 October 2026")}));
   });
