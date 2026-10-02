@@ -16,8 +16,8 @@ export async function POST(request: Request) {
     const { email } = await parseJson(request, schema, 2_048);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     if (user?.isActive) {
-      const { token } = await createAccountToken(user.id, "PASSWORD_RESET", 30);
       try {
+        const { token } = await createAccountToken(user.id, "PASSWORD_RESET", 30,user.email);
         await sendPasswordResetEmail(user.email, token);
       } catch {
         // Keep the public response identical to avoid account enumeration.

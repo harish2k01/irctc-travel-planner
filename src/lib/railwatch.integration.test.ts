@@ -1,3 +1,4 @@
+import {createAccountToken,consumeAccountToken} from "./account-tokens";
 import { dismissInAppReminder,recordInAppReminder } from "./in-app-notifications";
 import { beginTelegramLogin,completeTelegramLogin,loginCredentialHash } from "./telegram-login";
 import { pollTelegram } from "./telegram-polling";
@@ -13,10 +14,48 @@ import { encryptSecret } from "./crypto";
 import { processRailWatch } from "./railwatch-jobs";
 import { addDays,EMPTY_PLANNER,todayIST,type Journey,type Rule } from "./travel-planner";
 vi.mock("./railwatch-google",()=>({syncGoogleCalendars:async()=>0}));
+const emailDelivery=vi.hoisted(()=>vi.fn().mockResolvedValue({sent:true}));
+vi.mock("./mail",()=>({sendBookingEmail:emailDelivery}));
 const users:string[]=[];
 async function fixture(){if(!new URL(process.env.DATABASE_URL!).pathname.endsWith("_test"))throw new Error("Use an isolated test database.");await prisma.appSettings.upsert({where:{id:"global"},create:{id:"global"},update:{bookingWindowDays:60,remindersEnabled:true,whatsappEnabled:true}});const u=await prisma.user.create({data:{email:`${randomUUID()}@railwatch.invalid`}});users.push(u.id);return {user:u,...await loadWorkspace(u.id)};}
 afterEach(async()=>{if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
 describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",()=>{
+  it("rejects expired, superseded, reused and email-change verification tokens",async()=>{
+    const f=await fixture();
+    const first=await createAccountToken(f.user.id,"EMAIL_VERIFICATION",1440,f.user.email);
+    const next=await createAccountToken(f.user.id,"EMAIL_VERIFICATION",1440,f.user.email);
+    const consume=(token:string)=>prisma.$transaction(async tx=>{const user=await consumeAccountToken(token,"EMAIL_VERIFICATION",tx);await tx.user.update({where:{id:user.id},data:{emailVerifiedAt:new Date()}});return user.id;});
+    await expect(consume(first.token)).rejects.toThrow(/invalid/);
+    await expect(consume(next.token)).resolves.toBe(f.user.id);
+    await expect(consume(next.token)).rejects.toThrow(/invalid/);
+    const expired=await createAccountToken(f.user.id,"EMAIL_VERIFICATION",-1,f.user.email);
+    await expect(consume(expired.token)).rejects.toThrow(/expired/);
+    await prisma.user.update({where:{id:f.user.id},data:{email:`${randomUUID()}@railwatch.invalid`,emailVerifiedAt:null}});
+    await expect(createAccountToken(f.user.id,"EMAIL_VERIFICATION",1440,f.user.email)).rejects.toThrow(/email changed/);
+  });
+
+  it("leases email delivery once and cancels it after ownership is revoked",async()=>{
+    const f=await fixture(),today=todayIST(),settings=await prisma.appSettings.findUniqueOrThrow({where:{id:"global"}});
+    const now=new Date(`${today}T08:00:00+05:30`);
+    try{
+      emailDelivery.mockClear();
+      await prisma.appSettings.update({where:{id:"global"},data:{smtpUrl:encryptSecret("smtp://example.invalid:587")}});
+      const journey:Journey={id:"email-due",from:"A",to:"B",date:addDays(today,60),departure:"20:00",train:"",pnr:"",travelClass:"SL",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
+      await saveWorkspace(f.user.id,{...f.planner,journeys:[journey],settings:{...f.planner.settings,emailEnabled:true,reminderTimes:["opening"]}},f.revision);
+      await processRailWatch(now);
+      expect(emailDelivery).not.toHaveBeenCalled();
+      await prisma.user.update({where:{id:f.user.id},data:{emailVerifiedAt:new Date()}});
+      await Promise.all([processRailWatch(now),processRailWatch(now)]);
+      expect(emailDelivery).toHaveBeenCalledTimes(1);
+      expect(emailDelivery).toHaveBeenCalledWith(f.user.email,expect.objectContaining({id:journey.id}));
+      const delivered=await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id,kind:"EMAIL"}});
+      await prisma.railJob.update({where:{id:delivered.id},data:{state:"PENDING",sentAt:null}});
+      await prisma.user.update({where:{id:f.user.id},data:{email:`${randomUUID()}@railwatch.invalid`,emailVerifiedAt:null}});
+      await processRailWatch(now);
+      expect(emailDelivery).toHaveBeenCalledTimes(1);
+      expect((await prisma.railJob.findUniqueOrThrow({where:{id:delivered.id}})).state).toBe("CANCELLED");
+    }finally{await prisma.appSettings.update({where:{id:"global"},data:{smtpUrl:settings.smtpUrl}});}
+  });
   it("persists automatic completion and cancellation archival without a browser and keeps refresh revisions stable",async()=>{
     const f=await fixture(),today=todayIST();
     const base:Journey={id:"finished",from:"A",to:"B",date:addDays(today,-1),departure:"20:00",train:"",pnr:"1234567890",coach:"B2",seat:"17",travelClass:"SL",windowDays:60,originOffset:0,status:"booked",notes:"Keep this ticket"};

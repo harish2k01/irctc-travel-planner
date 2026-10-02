@@ -10,17 +10,15 @@ Reviewed against merged main on 2 October 2026. This is a current implementation
 - Configurable booking window, Sunday-first calendar, rolling routine horizon, holidays/leave, CSV import and iCalendar export.
 - In-app and Telegram reminders, deduplication, durable leases, bounded retries, delivery failure notifications and outbound Telegram polling.
 - Local PDF text/QR/OCR extraction, account-owned PDF storage/viewing, seven-day original-file retention, and image extraction without storage.
-- SMTP invitations/reset/test delivery, branded HTML, structured API/provider/scheduler logs, and release/version endpoints.
+- Email ownership verification and opt-in SMTP booking reminders, SMTP invitations/reset/test delivery, branded HTML, structured API/provider/scheduler logs, and release/version endpoints.
 - PR unit/database/browser tests, CodeQL, build checks and immutable release images.
 
 ## Remaining from the original plan
 
 | Area | Current limitation and next work |
 | --- | --- |
-| Identity verification | Public signup and email changes do not verify ownership through a verification email. Invitation/reset links exist, but do not replace a complete verification flow. |
 | Reminder recovery | Jobs have leases, retries and eligibility checks. Schedules more than 24 hours old are excluded; add explicit missed-reminder/outage handling and an operator retry view. |
 | Notification control | The header inbox has read/dismiss and failure states. A paginated notification history, snooze, quiet hours and detailed per-journey delivery timeline remain absent. |
-| Email booking reminders | SMTP currently sends account invitations, password resets and test messages. Booking jobs use in-app, Telegram or WhatsApp; SMTP booking reminders are not implemented. |
 | Large accounts | The API reads/saves an encrypted whole workspace and the browser filters it. Server pagination/search, accurate paginated aggregates and realistic account-scale performance tests remain. |
 | Calendar and planning | CSV holiday import and ICS export exist. ICS holiday import, a mobile agenda, overflow accessibility and actionable duplicate/overlap/leave-conflict suggestions remain. |
 | Editing and navigation | Journey dialogs exist, but linkable individual journey URLs and unsaved-change protection still need implementation. |
@@ -37,3 +35,9 @@ PNR providers, offline ticket access and Tatkal-specific planning were optional 
 ## Cleanup boundaries
 
 No interactive prototype route, demo workspace seed or browser-persisted prototype planner ships with the app. Negative tests for retired routes and synthetic ticket fixtures remain intentional regression coverage. Database migrations, schema compatibility, backup import and workspace normalization are retained to protect saved data. Test mocks, form placeholders, local development defaults and request AsyncLocalStorage are not prototype features.
+
+## Email delivery and ownership
+
+When SMTP is configured, users request a 24-hour verification link under Profile and explicitly confirm it before opting into Email Reminders under Connections. Signup and first-administrator bootstrap remain usable without SMTP. Existing accounts are not silently marked verified. Email changes revoke unused account tokens and clear verification; the scheduler rechecks the current verified address and preference before delivery. Emailed password-reset tokens prove ownership. Invitations can be shared manually by administrators, so invitation links and administrator-issued temporary passwords do not mark an email verified.
+
+SMTP booking reminders use the same schedule, durable leases, retries and notification failure reporting as the other channels. Removing SMTP pauses queued email delivery without consuming retries. Email addresses and message bodies are not logged.
