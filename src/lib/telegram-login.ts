@@ -6,18 +6,22 @@ import { ApiError } from "./http";
 import { getProviderConfiguration,telegramLoginConfigured,telegramLoginRedirect,type TelegramConfiguration } from "./provider-config";
 import { tokenHash,bindTelegramAccount } from "./telegram";
 const keys=createRemoteJWKSet(new URL("https://oauth.telegram.org/.well-known/jwks.json"),{timeoutDuration:10000});
+/** Identifies the configured Telegram authorization credentials without retaining them in browser state. */
 export function loginCredentialHash(bot:TelegramConfiguration){return tokenHash(`${bot.clientId}:${bot.clientSecret}`);}
+/** Builds Telegram authorization parameters for the current instance. */
 export function authorizationDetails(bot:TelegramConfiguration){
   const state=randomBytes(32).toString("base64url"),verifier=randomBytes(32).toString("base64url"),nonce=randomBytes(32).toString("base64url");
   const url=new URL("https://oauth.telegram.org/auth");
   url.search=new URLSearchParams({client_id:bot.clientId!,redirect_uri:telegramLoginRedirect(),response_type:"code",scope:"openid profile telegram:bot_access",state,nonce,code_challenge:createHash("sha256").update(verifier).digest("base64url"),code_challenge_method:"S256"}).toString();
   return {url:url.href,state,verifier,nonce};
 }
+/** Creates a short-lived account-bound authorization flow with anti-replay state. */
 export async function beginTelegramLogin(userId:string,bot:TelegramConfiguration){
   const details=authorizationDetails(bot),data={providerId:bot.id,linkTokenHash:null,linkExpiresAt:null,authStateHash:tokenHash(details.state),authExpiresAt:new Date(Date.now()+600000),authPayload:encryptSecret(JSON.stringify({verifier:details.verifier,nonce:details.nonce,credentialHash:loginCredentialHash(bot)}))};
   await prisma.railTelegram.upsert({where:{userId},create:{userId,...data},update:data});
   return details.url;
 }
+/** Verifies Telegram identity tokens against the provider signing keys and expected claims. */
 export async function verifyTelegramIdentity(token:string,bot:TelegramConfiguration,nonce:string,key:JWTVerifyGetKey=keys){
   const {payload}=await jwtVerify(token,key,{issuer:"https://oauth.telegram.org",audience:bot.clientId!,algorithms:["RS256"],requiredClaims:["exp","iat","sub","nonce","id"],maxTokenAge:"10m"});
   if(payload.nonce!==nonce||typeof payload.sub!=="string"||!payload.sub.length||payload.sub.length>256)throw new Error("Invalid Telegram identity");
@@ -26,6 +30,7 @@ export async function verifyTelegramIdentity(token:string,bot:TelegramConfigurat
   if(!((typeof id==="number"&&Number.isSafeInteger(id)&&id>0)||(typeof id==="string"&&/^\d{1,16}$/.test(id)&&Number.isSafeInteger(Number(id))&&Number(id)>0)))throw new Error("Invalid Telegram chat");
   return {chatId:String(id),username:typeof payload.preferred_username==="string"?payload.preferred_username.slice(0,100):null};
 }
+/** Consumes the account-bound authorization flow and links the verified Telegram identity. */
 export async function completeTelegramLogin(userId:string,state:string,code:string){
   const config=await getProviderConfiguration(),bot=config.telegram;
   if(!bot||!telegramLoginConfigured(config)||! /^[A-Za-z0-9_-]{43}$/.test(state)||!code||code.length>4096)throw new ApiError(400,"Telegram authorization expired. Try connecting again.");

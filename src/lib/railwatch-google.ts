@@ -1,15 +1,19 @@
+import {logger} from "./logger";
 import { createHash,randomUUID } from "node:crypto";
 import { prisma } from "./db";
 import { decryptSecret,encryptSecret } from "./crypto";
 import { getFeaturePolicy } from "./settings";
-import { applyAccountSettings,decodeWorkspace } from "./railplan-store";
+import { applyAccountSettings,decodeWorkspace } from "./railwatch-store";
 import { addDays,bookingDay,effectiveReminders,reminderPreview,type Planner } from "./travel-planner";
 import { getProviderConfiguration,googleConfigured } from "./provider-config";
+/** Checks instance configuration before Google connection or synchronization. */
 export async function googleReady(){return googleConfigured(await getProviderConfiguration());}
+/** Returns the canonical Google OAuth callback URL. */
 export function googleRedirect(){return new URL("/api/railwatch/google/callback",process.env.APP_URL).href;}
+/** Builds deterministic calendar events for travel, booking dates, and time off. */
 export function googleEvents(planner:Planner){
   const events:{id:string;summary:string;description:string;start:{date?:string;dateTime?:string;timeZone?:string};end:{date?:string;dateTime?:string;timeZone?:string};reminders:{useDefault:false;overrides:{method:"popup";minutes:number}[]}}[]=[];
-  const id=(key:string)=>createHash("sha256").update(key).digest("hex");
+  const /** Builds a stable provider event identifier for idempotent synchronization. */ id=(key:string)=>createHash("sha256").update(key).digest("hex");
   for(const j of planner.journeys){if(j.archivedAt||["skipped","cancelled","completed"].includes(j.status))continue;
     const summary=`${j.status==="cancellation_needed"?"Cancel ticket":"Train"}: ${j.from} → ${j.to}`;
     const dateTime=`${j.date}T${j.departure}:00+05:30`;
@@ -21,7 +25,9 @@ export function googleEvents(planner:Planner){
   for(const h of planner.holidays)events.push({id:id(`${h.id}:holiday`),summary:h.name,description:h.type==="company"?"Company holiday":"Personal leave",start:{date:h.date},end:{date:addDays(h.date,1)},reminders:{useDefault:false,overrides:[]}});
   return events;
 }
+/** Makes a bounded authenticated Google Calendar API call. */
 export async function googleFetch(token:string,path:string,init?:RequestInit){const response=await fetch(`https://www.googleapis.com/calendar/v3${path}`,{...init,redirect:"error",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json",...init?.headers},signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error(`Calendar request failed (${response.status}).`);return response.status===204?{}:response.json();}
+/** Leases account calendars and incrementally synchronizes events without concurrent duplicate writes. */
 export async function syncGoogleCalendars(){
   const policy=await getFeaturePolicy();const configuration=await getProviderConfiguration();const google=configuration.google;if(!policy.googleCalendarEnabled||!googleConfigured(configuration)||!google)return 0;const accounts=await prisma.railGoogle.findMany({where:{enabled:true,user:{isActive:true}},orderBy:{syncedAt:{sort:"asc",nulls:"first"}},take:50});let synced=0;
   for(const connection of accounts){const lease=randomUUID();const now=new Date();const claim=await prisma.railGoogle.updateMany({where:{userId:connection.userId,enabled:true,OR:[{leaseUntil:null},{leaseUntil:{lt:now}}]},data:{lease,leaseUntil:new Date(now.getTime()+300000)}});if(!claim.count)continue;
@@ -39,7 +45,7 @@ export async function syncGoogleCalendars(){
       for(const event of events){const hash=createHash("sha256").update(JSON.stringify({...event,status:"confirmed"})).digest("hex");if(tokens.eventHashes[event.id]===hash)continue;if(++changes>100)throw new Error("Calendar sync will continue in the next worker run.");const current=await prisma.railGoogle.findUnique({where:{userId:connection.userId},select:{lease:true,enabled:true}});if(!current?.enabled||current.lease!==lease)throw new Error("Calendar sync paused.");await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{leaseUntil:new Date(Date.now()+300000)}});const response=await fetch(`https://www.googleapis.com/calendar/v3${base}/${event.id}`,{method:"PUT",redirect:"error",headers:{Authorization:`Bearer ${tokens.access_token}`,"Content-Type":"application/json"},body:JSON.stringify(event),signal:AbortSignal.timeout(15000)});if(response.status===404){try{await googleFetch(tokens.access_token,base,{method:"POST",body:JSON.stringify(event)});}catch(e){if(!String(e).includes("409"))throw e;}}else if(!response.ok)throw new Error("Calendar update failed.");tokens.eventHashes[event.id]=hash;await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{tokens:encryptSecret(JSON.stringify(tokens))}});}
       for(const eventId of owned.filter(id=>!events.some(e=>e.id===id))){if(++changes>100)throw new Error("Calendar cleanup will continue next run.");const current=await prisma.railGoogle.findUnique({where:{userId:connection.userId},select:{lease:true,enabled:true}});if(!current?.enabled||current.lease!==lease)throw new Error("Calendar sync paused.");await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{leaseUntil:new Date(Date.now()+300000)}});const response=await fetch(`https://www.googleapis.com/calendar/v3${base}/${eventId}`,{method:"DELETE",redirect:"error",headers:{Authorization:`Bearer ${tokens.access_token}`},signal:AbortSignal.timeout(15000)});if(!response.ok&&![404,410].includes(response.status))throw new Error("Calendar cleanup failed.");}
       tokens.workspaceVersion=workspace.version;tokens.eventHashes=Object.fromEntries(events.map(e=>[e.id,tokens.eventHashes[e.id]]));
-      await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{tokens:encryptSecret(JSON.stringify(tokens)),eventIds:events.map(e=>e.id),syncedAt:new Date(),lastError:null}});synced++;
-    }catch{await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{lastError:"Calendar sync failed. Check your connection or reconnect Google."}});}finally{await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{lease:null,leaseUntil:null}});}
+      await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{tokens:encryptSecret(JSON.stringify(tokens)),eventIds:events.map(e=>e.id),syncedAt:new Date(),lastError:null}});synced++;logger.info("google.sync_completed",{events:events.length});
+    }catch(error){logger.error("google.sync_failed",{errorType:error instanceof Error?error.name:"UnknownError"});await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{lastError:"Calendar sync failed. Check your connection or reconnect Google."}});}finally{await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{lease:null,leaseUntil:null}});}
   }return synced;
 }

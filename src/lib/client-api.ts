@@ -4,6 +4,7 @@ export class ClientApiError extends Error {
   }
 }
 
+/** Calls the same-origin API and converts structured failures into user-facing errors. */
 export async function apiRequest<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,

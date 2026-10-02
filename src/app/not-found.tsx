@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
+/** Renders the application fallback for an unknown route. */
 export default function NotFound() {
   return (
     <main className="grid min-h-screen place-items-center bg-slate-50 p-4">

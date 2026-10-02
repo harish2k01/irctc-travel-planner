@@ -5,7 +5,9 @@ import { getAppSettings } from "@/lib/settings";
 import { getProviderConfiguration,providerSummary,providerUpdateSchema,resolveProviderConfiguration,updateProviderConfiguration } from "@/lib/provider-config";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { writeAudit } from "@/lib/audit";
+/** Returns non-secret provider configuration summaries to administrators. */
 export async function GET(request:Request){try{await requireAdmin();return jsonData(providerSummary(await getProviderConfiguration()));}catch(e){return routeError(e,request);}}
+/** Validates and stores encrypted provider updates and removes obsolete account connections. */
 export async function PATCH(request:Request){try{
   assertSameOrigin(request);const actor=await requireAdmin();await enforceRateLimit(request,"admin:providers:"+actor.id,10,60000);const input=await parseJson(request,providerUpdateSchema,12288);await getAppSettings();
   const result=await prisma.$transaction(async tx=>{

@@ -8,6 +8,7 @@ import { Toast } from "./toast";
 import { TravelPlanner } from "./planner";
 import s from "./planner.module.css";
 export type AccountWorkspace={planner:Planner;revision:number};
+/** Loads the authenticated account workspace before rendering the planner. */
 export function AccountApp({user}:{user:UserProfile}){
   const [dismissed,setDismissed]=useState(false);const [data,setData]=useState<AccountWorkspace>();const [error,setError]=useState("");
   useEffect(()=>{let live=true;apiRequest<AccountWorkspace>("/api/railwatch/workspace",{cache:"no-store"}).then(value=>{if(live)setData(value);}).catch(e=>{if(live)setError(e.message);});return()=>{live=false;};},[]);

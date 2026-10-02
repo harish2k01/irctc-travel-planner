@@ -3,11 +3,13 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptSecret,decryptSecret } from "@/lib/crypto";
 import { ApiError,assertSameOrigin,jsonData,routeError,noStoreHeaders } from "@/lib/http";
-import { decodeWorkspace } from "@/lib/railplan-store";
+import { decodeWorkspace } from "@/lib/railwatch-store";
 import { attachmentSchema } from "@/lib/travel-planner";
 type Context={params:Promise<{id:string}>};
 const MAX=10485760;
+/** Streams an encrypted-storage original only to its owning account. */
 export async function GET(request:Request,context:Context){try{const user=await requireUser();const {id}=await context.params;const file=await prisma.railFile.findUnique({where:{userId_id:{userId:user.id,id}}});if(!file)throw new ApiError(404,"Ticket file not found.");const bytes=Buffer.from(decryptSecret(file.payload)!,"base64");return new Response(bytes,{headers:{...noStoreHeaders(),"Content-Type":file.type,"Content-Length":String(bytes.length),"Content-Disposition":`attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,"X-Content-Type-Options":"nosniff"}});}catch(e){return routeError(e,request);}}
+/** Validates file contents, ownership, and quota before storing the encrypted original. */
 export async function PUT(request:Request,context:Context){try{
   assertSameOrigin(request);const user=await requireUser();const {id}=await context.params;
   if(!(await getFeaturePolicy()).ticketUploadsEnabled)throw new ApiError(403,"Ticket uploads are disabled by the administrator.","FEATURE_DISABLED");
@@ -24,4 +26,5 @@ export async function PUT(request:Request,context:Context){try{
     await tx.railFile.create({data:{id,userId:user.id,name:meta.name,type:meta.type,size:meta.size,payload:encryptSecret(bytes.toString("base64"))}});
   });return jsonData(meta);
 }catch(e){return routeError(e,request);}}
+/** Deletes an unlinked original after checking account ownership and workspace references. */
 export async function DELETE(request:Request,context:Context){try{assertSameOrigin(request);const user=await requireUser();const {id}=await context.params;await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;const workspace=await tx.railWorkspace.findUnique({where:{userId:user.id}});if(workspace&&decodeWorkspace(workspace.payload).journeys.some(j=>j.attachments?.some(f=>f.id===id)))throw new ApiError(409,"Remove this attachment from its journey before deleting the original.");await tx.railFile.deleteMany({where:{userId:user.id,id}});});return jsonData({deleted:true});}catch(e){return routeError(e,request);}}

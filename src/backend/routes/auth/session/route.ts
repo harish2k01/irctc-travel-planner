@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getAppSettings, publicPolicy } from "@/lib/settings";
 import { jsonData, routeError } from "@/lib/http";
 
+/** Returns authenticated account state and non-secret instance policy. */
 export async function GET(request: Request) {
   try {
     const [user, settings, count] = await Promise.all([getCurrentUser(), getAppSettings(), prisma.user.count()]);

@@ -1,6 +1,7 @@
 type TextItem={str:string;transform:number[]};
 const LABELS:Record<string,string>={bookedfrom:"From",boardingat:"Boarding Station",currentstatus:"Current Status",pnr:"PNR",pnrnumber:"PNR",pnrno:"PNR",trainnoname:"Train No./Name",trainnumbername:"Train No./Name",trainname:"Train Name",trainno:"Train No",class:"Class",dateofjourney:"Date of Journey",journeydate:"Journey Date",boardingdate:"Boarding Date",from:"From",to:"To",boardingstation:"Boarding Station",scheduleddeparture:"Scheduled Departure",departuretime:"Departure Time",boardingtime:"Boarding Time",coach:"Coach",coachno:"Coach",coachnumber:"Coach",seatno:"Seat No",seatnumber:"Seat No",berthtype:"Berth"};
 // PDF emission order does not necessarily follow visible rows or columns.
+/** Reconstructs visible PDF rows and aligns header columns with their values. */
 export function ticketPdfText(items:TextItem[]):string{
  const lines:{y:number;items:{x:number;text:string}[]}[]=[];
  for(const item of items){const y=item.transform[5],x=item.transform[4];let line=lines.find(line=>Math.abs(line.y-y)<=3);if(!line){line={y,items:[]};lines.push(line);}line.items.push({x,text:item.str});}
@@ -29,6 +30,7 @@ export function ticketPdfText(items:TextItem[]):string{
  return [...fields,...lines.map(line=>line.items.map(item=>item.text).join(" "))].join("\n");
 }
 
+/** Converts positioned OCR words into the same row-and-column parsing format. */
 export function ticketOcrText(tsv:string):string{
  const items:TextItem[]=tsv.split("\n").flatMap(line=>{const cells=line.split("\t");if(cells[0]!=="5"||!cells[11]?.trim())return [];const x=Number(cells[6])/2,y=-Number(cells[7])/2;if(!Number.isFinite(x)||!Number.isFinite(y))return [];return [{str:cells.slice(11).join("\t"),transform:[1,0,0,1,x,y]}];});
  return ticketPdfText(items);

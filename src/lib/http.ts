@@ -14,6 +14,7 @@ export class ApiError extends Error {
   }
 }
 
+/** Rejects cross-origin mutations using the canonical request host. */
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin && process.env.NODE_ENV !== "production") return;
@@ -25,6 +26,7 @@ export function assertSameOrigin(request: Request) {
   }
 }
 
+/** Reads a bounded JSON body and validates it against the route schema. */
 export async function parseJson<T>(request: Request, schema: ZodType<T>, maxBytes = 64_000): Promise<T> {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > maxBytes) throw new ApiError(413, "The request is too large.", "PAYLOAD_TOO_LARGE");
@@ -61,12 +63,14 @@ export async function parseJson<T>(request: Request, schema: ZodType<T>, maxByte
   return parsed.data;
 }
 
+/** Returns the standard API data envelope with private no-store caching. */
 export function jsonData<T>(data: T, init?: ResponseInit) {
   const headers = new Headers(init?.headers);
   headers.set("Cache-Control", "private, no-store, max-age=0");
   return Response.json({ data }, { ...init, headers });
 }
 
+/** Maps known validation and authorization failures to safe API errors and logs unexpected failures. */
 export function routeError(error: unknown, request?: Request) {
   const requestId = request?.headers.get("x-request-id") ?? randomUUID();
 
@@ -88,7 +92,8 @@ export function routeError(error: unknown, request?: Request) {
   logger.error("api.unhandled_error", {
     requestId,
     path: request ? new URL(request.url).pathname : undefined,
-    error: error instanceof Error ? error.message : String(error),
+    errorType: error instanceof Error ? error.name : "UnknownError",
+    stack:error instanceof Error?error.stack?.split("\n").filter(line=>line.trim().startsWith("at ")).join("\n"):undefined,
   });
   return Response.json(
     { error: { code: "INTERNAL_ERROR", message: "The request could not be completed." }, requestId },
@@ -96,6 +101,7 @@ export function routeError(error: unknown, request?: Request) {
   );
 }
 
+/** Returns headers that prevent authenticated data from being cached. */
 export function noStoreHeaders() {
   return { "Cache-Control": "private, no-store, max-age=0" };
 }

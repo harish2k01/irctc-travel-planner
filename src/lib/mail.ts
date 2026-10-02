@@ -1,10 +1,13 @@
+import { logger } from "./logger";
 import nodemailer from "nodemailer";
 import { getDeliveryConfiguration } from "@/lib/settings";
 
+/** Returns the canonical browser URL used in account setup links. */
 function appUrl() {
   return process.env.APP_URL ?? "http://localhost:3000";
 }
 
+/** Sends an email through the saved SMTP connection with bounded timeouts and safe outcome logging. */
 async function send(to: string, subject: string, text: string) {
   const config = await getDeliveryConfiguration();
   if (!config.smtpUrl) return { sent: false as const, reason: "Email delivery is not configured." };
@@ -14,11 +17,13 @@ async function send(to: string, subject: string, text: string) {
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
   });
-  const result = await transporter.sendMail({ from: config.emailFrom, to, subject, text });
+  try{const result = await transporter.sendMail({ from: config.emailFrom, to, subject, text });
   if (!result.accepted?.some(address => String(address).toLowerCase() === to.toLowerCase())) throw new Error("SMTP did not accept the recipient.");
-  return { sent: true as const };
+  logger.info("smtp.sent",{accepted:result.accepted?.length??0});return { sent: true as const };
+  }catch(error){const e=error as {code?:string;command?:string;responseCode?:number};logger.error("smtp.failed",{code:e.code,command:e.command,responseCode:e.responseCode,reason:smtpFailureReason(error)});throw error;}finally{transporter.close();}
 }
 
+/** Sends an expiring invitation link to the created account. */
 export function sendInvitationEmail(email: string, token: string) {
   const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=invitation`;
   return send(email, "Set up your RailWatch account", [
@@ -30,6 +35,7 @@ export function sendInvitationEmail(email: string, token: string) {
   ].join("\n"));
 }
 
+/** Sends a one-use password-reset link without disclosing account credentials. */
 export function sendPasswordResetEmail(email: string, token: string) {
   const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=reset`;
   return send(email, "Reset your RailWatch password", [
@@ -41,4 +47,8 @@ export function sendPasswordResetEmail(email: string, token: string) {
   ].join("\n"));
 }
 
+/** Tests delivery to the signed-in administrator through the saved SMTP settings. */
 export function sendTestEmail(email:string){return send(email,"RailWatch email test","Email delivery is working for your RailWatch account.");}
+
+/** Maps SMTP protocol failures to actionable messages without exposing credentials or recipient addresses. */
+export function smtpFailureReason(error:unknown){const e=error as {code?:string;command?:string;responseCode?:number};if(e.code==="EENVELOPE"&&e.command==="MAIL FROM")return "SMTP rejected the sender address. Set Sender to an address or verified alias allowed by your SMTP account.";if(e.code==="EAUTH")return "SMTP authentication failed. Check the username and password.";if(e.code==="ETIMEDOUT")return "SMTP timed out. Check the host, port, and network access.";if(e.code==="ESOCKET")return "Could not connect to SMTP. Check the host, port, and TLS settings.";return "SMTP did not accept the test email. Check the saved connection, sender address, and recipient.";}

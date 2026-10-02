@@ -11,6 +11,7 @@ import { getAppSettings } from "@/lib/settings";
 
 const schema = z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(254), password: passwordSchema });
 
+/** Creates the first administrator or a permitted user signup with a secure session. */
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);

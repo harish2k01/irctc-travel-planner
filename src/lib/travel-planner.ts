@@ -23,7 +23,7 @@ export const journeySchema = z.object({
   departureConfirmed: z.boolean().optional(),
   bookingDateOverride: daySchema.optional(),
   trainNumber: z.string().max(20).optional(), trainName: z.string().max(100).optional(), coach: z.string().max(20).optional(), seat: z.string().max(30).optional(), berth: z.string().max(30).optional(),
-  cancelledAt: daySchema.optional(), archivedAt: daySchema.optional(), attachments: z.array(attachmentSchema).max(20).optional(),
+  completedAt:daySchema.optional(), cancelledAt: daySchema.optional(), archivedAt: daySchema.optional(), attachments: z.array(attachmentSchema).max(20).optional(),
   status: statusSchema, pnr: z.string().regex(/^$|^\d{10}$/), notes: z.string().max(1000),
 });
 export const ruleSchema = z.object({
@@ -49,23 +49,33 @@ export type Planner = z.infer<typeof plannerSchema>;
 export type JourneyStatus = Journey["status"];
 export const EMPTY_PLANNER: Planner = { version: 1, journeys: [], rules: [], holidays: [], settings: { telegramEnabled:false,telegramChatId:"",telegramProviderId:"",weekStartsOn:0,routineHorizonMode:"months",routineMonthsAhead:6,routineTicketCount:26,whatsappEnabled: false, sidebarCollapsed: false, bookingWindowDays: 60, theme: "light", weekendDays: [0, 6], reminderTimes: ["previous_evening", "morning", "opening"], reminderClock: DEFAULT_CLOCK, whatsappNumber: "" } };
 const DAY_MS = 86400000;
+/** Validates a real calendar date in YYYY-MM-DD format. */
 export function isDay(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const d = new Date(`${value}T00:00:00Z`);
   return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
+/** Shifts a calendar date by whole days without local timezone drift. */
 export function addDays(day: string, count: number) { return new Date(new Date(`${day}T00:00:00Z`).getTime() + count * DAY_MS).toISOString().slice(0, 10); }
+/** Calculates the whole-day difference between two calendar dates. */
 export function daysBetween(a: string, b: string) { return Math.round((new Date(`${b}T00:00:00Z`).getTime() - new Date(`${a}T00:00:00Z`).getTime()) / DAY_MS); }
+/** Returns the weekday index for a calendar date. */
 export function weekday(day: string) { return new Date(`${day}T00:00:00Z`).getUTCDay(); }
+/** Returns the current date in the application travel timezone, Asia/Kolkata. */
 export function todayIST(now = new Date()) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(now); }
+/** Formats a calendar date for display using the requested date components. */
 export function formatDay(day: string, options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", weekday: "short" }) { return new Intl.DateTimeFormat("en-IN", { ...options, timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`)); }
+/** Calculates the shared advance-booking date for a journey. */
 export function bookingDay(journey: Pick<Journey, "date" | "windowDays" | "originOffset" | "bookingDateOverride">) { return addDays(journey.date, -journey.windowDays); }
+/** Returns the booking-opening instant at 8 AM IST. */
 export function bookingInstant(journey: Pick<Journey, "date" | "windowDays" | "originOffset" | "bookingDateOverride">) { return new Date(`${bookingDay(journey)}T08:00:00+05:30`); }
+/** Classifies a booking window relative to the current instant. */
 export function bookingPhase(journey: Journey, now = new Date()) {
   if (journey.date < todayIST(now)) return "past";
   if (bookingInstant(journey) > now) return "upcoming";
   return bookingDay(journey) === todayIST(now) ? "today" : "open";
 }
+/** Expands recurrence into bounded deterministic journey occurrences. */
 export function generateJourneys(raw: Rule, today = todayIST(), settings = EMPTY_PLANNER.settings): Journey[] {
   const rule = ruleSchema.parse(raw);
   const result: Journey[] = [];
@@ -102,6 +112,7 @@ export function generateJourneys(raw: Rule, today = todayIST(), settings = EMPTY
   }
   return settings.routineHorizonMode === "count" ? result.slice(0,settings.routineTicketCount) : result;
 }
+/** Regenerates a routine while retaining booked tickets and individually changed journeys. */
 export function saveRule(planner: Planner, rule: Rule, today = todayIST()): Planner {
   const generated = generateJourneys({...rule,windowDays:planner.settings.bookingWindowDays}, today, planner.settings);
   const existing = new Map(planner.journeys.map(j => [j.id, j]));
@@ -112,11 +123,12 @@ export function saveRule(planner: Planner, rule: Rule, today = todayIST()): Plan
   return { ...planner, rules: [...planner.rules.filter(r => r.id !== rule.id), rule], journeys: [...preserved, ...additions] };
 }
 export const CANCELLED_RETENTION_DAYS = 7;
+/** Completes past booked journeys and archives cancelled plans after their retention period. */
 export function reconcileJourneyLifecycle(planner:Planner,today:string):Planner{
  let changed=false;
  const journeys=planner.journeys.map(j=>{
   if(j.archivedAt)return j;
-  if(j.status==="booked"&&j.date<today){changed=true;return {...j,status:"completed" as const};}
+  if(j.status==="booked"&&j.date<today){changed=true;return {...j,status:"completed" as const,completedAt:addDays(j.date,1)};}
   if(j.status==="cancelled"||j.status==="skipped"){
    const cancelledAt=j.cancelledAt&&j.cancelledAt<=today?j.cancelledAt:today;
    const archivedAt=daysBetween(cancelledAt,today)>=CANCELLED_RETENTION_DAYS?today:undefined;
@@ -126,11 +138,13 @@ export function reconcileJourneyLifecycle(planner:Planner,today:string):Planner{
  });
  return changed?{...planner,journeys}:planner;
 }
+/** Replenishes active routines to the instance planning horizon. */
 export function extendRoutines(planner: Planner, today: string): Planner {
   let next = planner;
   for (const rule of planner.rules.filter(r => !r.paused)) next = saveRule(next, rule, today);
   return JSON.stringify(next) === JSON.stringify(planner) ? planner : next;
 }
+/** Formats a routine recurrence for its card and editor. */
 export function recurrenceLabel(rule: Rule) {
   const r = rule.recurrence;
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -141,7 +155,9 @@ export function recurrenceLabel(rule: Rule) {
   const pattern = r.monthlyPattern === "date" ? `day ${r.dayOfMonth}` : `${r.ordinal === -1 ? "last" : ["", "first", "second", "third", "fourth", "fifth"][r.ordinal]} ${days[r.weekday]}`;
   return `${n === 1 ? "Monthly" : `Every ${n} months`} · ${pattern}`;
 }
-export function transitionJourney(journey: Journey, status: JourneyStatus): Journey { return { ...journey, status, cancelledAt:["cancelled","skipped"].includes(status)?(journey.status===status?journey.cancelledAt:todayIST()):undefined, ...(journey.ruleId ? { manualOverride: true } : {}) }; }
+/** Changes journey status while retaining ticket details and recording cancellation timing. */
+export function transitionJourney(journey: Journey, status: JourneyStatus): Journey { return { ...journey, status, completedAt:status==="completed"?(journey.completedAt??todayIST()):undefined, cancelledAt:["cancelled","skipped"].includes(status)?(journey.status===status?journey.cancelledAt:todayIST()):undefined, ...(journey.ruleId ? { manualOverride: true } : {}) }; }
+/** Updates a routine and its explicitly linked counterpart without losing existing tickets. */
 export function saveLinkedRule(planner: Planner, rule: Rule, today = todayIST()): Planner {
   const target = planner.rules.find(r => r.id === rule.linkedRuleId);
   if (rule.linkedRuleId && (!target || target.id === rule.id)) throw new Error("Choose another existing routine to link.");
@@ -151,12 +167,14 @@ export function saveLinkedRule(planner: Planner, rule: Rule, today = todayIST())
   next.rules = next.rules.map(r => r.id === target?.id ? { ...r, linkedRuleId: rule.id } : r.id !== rule.id && r.linkedRuleId === rule.id ? { ...r, linkedRuleId: undefined } : r);
   return next;
 }
+/** Resolves journey overrides, routine preferences, and account defaults. */
 export function effectiveReminders(planner: Planner, journey: Journey) {
   const routine = planner.rules.find(r => r.id === journey.ruleId)?.reminderOverride;
   const override = journey.reminderOverride?.mode !== "inherit" ? journey.reminderOverride : undefined;
   const chosen = override ?? (routine?.mode !== "inherit" ? routine : undefined);
   return chosen?.mode === "off" ? { times: [], clock: planner.settings.reminderClock } : chosen?.mode === "custom" ? { times: chosen.times, clock: chosen.clock } : { times: planner.settings.reminderTimes, clock: planner.settings.reminderClock };
 }
+/** Normalizes supported backup and stored workspace formats without discarding retained history. */
 export function migratePlanner(value: unknown): Planner {
   if (!value || typeof value !== "object") return plannerSchema.parse(value);
   const raw = value as Record<string, unknown>;
@@ -175,13 +193,15 @@ export function migratePlanner(value: unknown): Planner {
   }
   return planner;
 }
+/** Derives the cancellation status appropriate for the current ticket state. */
 export function cancellationStatus(status: JourneyStatus): JourneyStatus { return status === "booked" ? "cancellation_needed" : "skipped"; }
 export type Break = { start: string; end: string; days: number; names: string[]; planBy: string; bookingAlreadyOpen: boolean };
+/** Combines holidays, personal leave, and regular days off into travel opportunities. */
 export function findBreaks(planner: Planner, today: string): Break[] {
   const result: Break[] = [];
   const holidayMap = new Map<string, Holiday[]>();
   for (const h of planner.holidays) holidayMap.set(h.date, [...(holidayMap.get(h.date) ?? []), h]);
-  const off = (d: string) => planner.settings.weekendDays.includes(weekday(d)) || holidayMap.has(d);
+  const /** Checks whether a date is covered by the configured time off. */ off = (d: string) => planner.settings.weekendDays.includes(weekday(d)) || holidayMap.has(d);
   const horizon = addDays(today, 365);
   for (let d = today; d <= horizon; d = addDays(d, 1)) {
     if (!off(d)) continue;
@@ -199,6 +219,7 @@ export function findBreaks(planner: Planner, today: string): Break[] {
   return result;
 }
 // Strict CSV, including quoted commas; an invalid row rejects the entire import.
+/** Validates imported holiday rows and generates account-local identifiers. */
 export function parseHolidayCSV(text: string): Omit<Holiday, "id">[] {
   const rows: string[][] = []; let row: string[] = []; let field = ""; let quoted = false;
   const source = text.replace(/^\uFEFF/, "");
@@ -219,22 +240,24 @@ export function parseHolidayCSV(text: string): Omit<Holiday, "id">[] {
     return { date: parsed.data.date, name: parsed.data.name, type: parsed.data.type };
   });
 }
+/** Calculates scheduled reminder instants using the configured IST clock times. */
 export function reminderPreview(journey: Journey, times: Planner["settings"]["reminderTimes"], reminderClock = DEFAULT_CLOCK) {
   const day = bookingDay(journey);
   return times.map(t => `${t === "previous_evening" ? addDays(day, -1) : day}T${reminderClock[t]}:00+05:30`);
 }
+/** Exports journey, booking, and time-off events as an iCalendar document. */
 export function calendarFile(planner: Planner) {
-  const escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
-  const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const /** Escapes special characters in iCalendar text. */ escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  const /** Formats a calendar date and time for export. */ stamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const events: string[] = []; const now = stamp(new Date());
   for (const j of planner.journeys.filter(j => !j.archivedAt && !["skipped", "cancelled", "completed"].includes(j.status))) {
     const description = escape(`${j.from} → ${j.to}. ${j.train || "Train not selected"}. ${j.status.replaceAll("_", " ")}. ${j.notes}`);
-    const event = (kind: string, title: string, start: Date, end: Date, alarms: string[] = []) => events.push(["BEGIN:VEVENT", `UID:${escape(j.id)}-${kind}@railplan.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${description}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, ...alarms, "END:VEVENT"].join("\r\n"));
+    const /** Builds an iCalendar event from its typed properties. */ event = (kind: string, title: string, start: Date, end: Date, alarms: string[] = []) => events.push(["BEGIN:VEVENT", `UID:${escape(j.id)}-${kind}@railwatch.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${description}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, ...alarms, "END:VEVENT"].join("\r\n"));
     const title = `${j.status === "cancellation_needed" ? "Cancel ticket: " : "Train: "}${j.from} → ${j.to}`;
     if (j.departureConfirmed) {
       const departure = new Date(`${j.date}T${j.departure}:00+05:30`);
       event("journey", title, departure, new Date(departure.getTime() + 3600000));
-    } else events.push(["BEGIN:VEVENT", `UID:${escape(j.id)}-journey@railplan.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${description}`, `DTSTART;VALUE=DATE:${j.date.replaceAll("-", "")}`, `DTEND;VALUE=DATE:${addDays(j.date, 1).replaceAll("-", "")}`, "END:VEVENT"].join("\r\n"));
+    } else events.push(["BEGIN:VEVENT", `UID:${escape(j.id)}-journey@railwatch.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${description}`, `DTSTART;VALUE=DATE:${j.date.replaceAll("-", "")}`, `DTEND;VALUE=DATE:${addDays(j.date, 1).replaceAll("-", "")}`, "END:VEVENT"].join("\r\n"));
     if (j.status === "needs_booking") {
       const opens = bookingInstant(j);
       const reminders = effectiveReminders(planner, j);
@@ -242,8 +265,8 @@ export function calendarFile(planner: Planner) {
       event("booking", `Book train: ${j.from} → ${j.to} (${formatDay(j.date)})`, opens, new Date(opens.getTime() + 900000), alarms);
     }
   }
-  for (const h of planner.holidays) events.push(["BEGIN:VEVENT", `UID:${escape(h.id)}@railplan.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(h.name)}`, `DTSTART;VALUE=DATE:${h.date.replaceAll("-", "")}`, `DTEND;VALUE=DATE:${addDays(h.date, 1).replaceAll("-", "")}`, "END:VEVENT"].join("\r\n"));
+  for (const h of planner.holidays) events.push(["BEGIN:VEVENT", `UID:${escape(h.id)}@railwatch.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(h.name)}`, `DTSTART;VALUE=DATE:${h.date.replaceAll("-", "")}`, `DTEND;VALUE=DATE:${addDays(h.date, 1).replaceAll("-", "")}`, "END:VEVENT"].join("\r\n"));
   // Fold UTF-8 lines at 75 octets as required by iCalendar.
-  const fold = (line: string) => { let out = ""; let size = 0; for (const c of line) { const length = new TextEncoder().encode(c).length; if (size + length > 75) { out += "\r\n "; size = 1; } out += c; size += length; } return out; };
+  const /** Folds calendar export lines to the iCalendar byte limit. */ fold = (line: string) => { let out = ""; let size = 0; for (const c of line) { const length = new TextEncoder().encode(c).length; if (size + length > 75) { out += "\r\n "; size = 1; } out += c; size += length; } return out; };
   return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//RailWatch//Travel planner//EN", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR", ""].join("\r\n").split("\r\n").map(fold).join("\r\n");
 }

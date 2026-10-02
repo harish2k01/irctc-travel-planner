@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
 import s from "./planner.module.css";
 type Action = { label: string; onClick: () => void; disabled?: boolean; danger?: boolean };
+/** Provides keyboard-accessible secondary and destructive actions behind a single overflow button. */
 export function ActionMenu({ label, actions, disabled = false }: { label: string; actions: Action[]; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -10,7 +11,7 @@ export function ActionMenu({ label, actions, disabled = false }: { label: string
   useEffect(() => {
     if (!open) return;
     root.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
-    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const /** Dismisses the menu when a pointer event occurs outside it. */ outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);

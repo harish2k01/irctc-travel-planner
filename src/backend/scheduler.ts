@@ -1,8 +1,9 @@
 import { Pool } from "pg";
-import { processRailplan } from "@/lib/railplan-jobs";
+import { processRailWatch } from "@/lib/railwatch-jobs";
 import { logger } from "@/lib/logger";
 
-export async function runScheduledWork(pool: Pool, task = processRailplan) {
+/** Claims a PostgreSQL advisory lock so only one backend replica processes scheduled work. */
+export async function runScheduledWork(pool: Pool, task = processRailWatch) {
   const connection = await pool.connect();
   let locked = false;
   try {
@@ -19,14 +20,15 @@ export async function runScheduledWork(pool: Pool, task = processRailplan) {
   }
 }
 
+/** Runs scheduled processing once per minute and returns an orderly shutdown callback. */
 export function startScheduler() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 5000 });
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let active: Promise<void> | undefined;
-  const tick = async () => {
+  const /** Refreshes time-dependent state or runs the next scheduled processing cycle. */ tick = async () => {
     try { await runScheduledWork(pool); }
-    catch { logger.error("scheduler.failed", { message: "Scheduled processing failed; retrying next minute." }); }
+    catch(error) { logger.error("scheduler.failed", { errorType:error instanceof Error?error.name:"UnknownError", message: "Scheduled processing failed; retrying next minute." }); }
     if (!stopped) timer = setTimeout(() => { active = tick(); }, 60_000 - Date.now() % 60_000);
   };
   active = tick();

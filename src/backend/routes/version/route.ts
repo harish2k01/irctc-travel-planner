@@ -1,5 +1,6 @@
 
 
+/** Returns the deployed release identity for operational verification. */
 export async function GET() {
   return Response.json(
     {

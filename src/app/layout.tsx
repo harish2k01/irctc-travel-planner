@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   },
 };
 
+/** Applies the application metadata, fonts, and shared root document. */
 export default function RootLayout({
   children,
 }: Readonly<{

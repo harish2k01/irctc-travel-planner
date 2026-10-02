@@ -6,9 +6,14 @@ import { withRequestContext } from "./context";
 import { startScheduler } from "./scheduler";
 import { prisma } from "@/lib/db";
 import { routeError } from "@/lib/http";
+import { logger } from "@/lib/logger";
+import { randomUUID } from "node:crypto";
 
+/** Builds the persistent HTTP backend, adapts Web API routes, and records correlated request outcomes. */
 export function createBackend() {
-  const server = Fastify({ bodyLimit: 8_000_000, requestTimeout: 30_000, connectionTimeout: 30_000, logger: false });
+  const server = Fastify({ bodyLimit: 11_000_000, requestTimeout: 30_000, connectionTimeout: 30_000, logger: false,genReqId:request=>{const id=request.headers["x-request-id"];return typeof id==="string"&&/^[a-f0-9-]{36}$/i.test(id)?id:randomUUID();} });
+  server.addHook("onRequest",async(request,reply)=>{reply.header("x-request-id",request.id);request.headers["x-request-id"]=request.id;});
+  server.addHook("onResponse",async(request,reply)=>{if(request.url.startsWith("/api/health/")&&reply.statusCode<400)return;logger.info("backend.request",{requestId:request.id,method:request.method,route:request.routeOptions.url??"unmatched",status:reply.statusCode,durationMs:Math.round(reply.elapsedTime)});});
   server.removeAllContentTypeParsers();
   server.addContentTypeParser("*", { parseAs: "buffer" }, (_request, body, done) => done(null, body));
   for (const route of routes) {
@@ -49,9 +54,10 @@ export function createBackend() {
 if (process.env.NODE_ENV !== "test") {
   const server = createBackend();
   await server.listen({ port: Number(process.env.BACKEND_PORT ?? 3001), host: process.env.BACKEND_HOST ?? "0.0.0.0" });
+  logger.info("backend.started",{port:Number(process.env.BACKEND_PORT??3001),scheduler:process.env.SCHEDULER_ENABLED!=="false"});
   const stopScheduler = process.env.SCHEDULER_ENABLED === "false" ? async () => {} : startScheduler();
   let stopping = false;
-  const stop = async () => { if (stopping) return; stopping = true; await server.close(); await stopScheduler(); await prisma.$disconnect(); };
+  const /** Stops the scheduler and closes the backend gracefully. */ stop = async () => { if (stopping) return; stopping = true; await server.close(); await stopScheduler(); await prisma.$disconnect(); };
   process.once("SIGTERM", () => void stop());
   process.once("SIGINT", () => void stop());
 }

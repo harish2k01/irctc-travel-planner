@@ -8,6 +8,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 
 const schema = z.object({ email: z.string().trim().email(), password: z.string().min(1).max(128) });
 
+/** Verifies account credentials and creates a rate-limited secure session. */
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);

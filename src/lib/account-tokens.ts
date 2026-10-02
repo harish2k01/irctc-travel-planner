@@ -3,10 +3,12 @@ import type { AccountTokenType,Prisma } from "@prisma/client";
 import { ApiError } from "@/lib/http";
 import { prisma } from "@/lib/db";
 
+/** Hashes an opaque token before storing or comparing it, keeping raw credentials out of the database. */
 function hashToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
+/** Creates a time-limited, one-use invitation or password-reset token. */
 export async function createAccountToken(userId: string, type: AccountTokenType, ttlMinutes: number) {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + ttlMinutes * 60_000);
@@ -21,6 +23,7 @@ export async function createAccountToken(userId: string, type: AccountTokenType,
   return { token, expiresAt };
 }
 
+/** Validates and consumes an unexpired account token in the protected account flow. */
 export async function consumeAccountToken(token: string, type: AccountTokenType,tx:Prisma.TransactionClient) {
   const candidate=await tx.accountToken.findUnique({where:{tokenHash:hashToken(token)},select:{userId:true}});
   if(!candidate)throw new ApiError(400,"This link is invalid or has expired.","INVALID_TOKEN");

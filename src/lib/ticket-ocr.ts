@@ -1,6 +1,7 @@
 import { ticketOcrText } from "./ticket-pdf-text";
 
 // All recognition assets are served by this instance; ticket pixels stay in the browser.
+/** Runs same-origin English OCR locally in the browser and terminates its worker. */
 export async function recognizeTicket(canvas:HTMLCanvasElement):Promise<string>{
  const {createWorker}=await import("tesseract.js");
  const worker=await createWorker("eng",1,{workerPath:"/railwatch/ocr/worker.min.js",corePath:"/railwatch/ocr",langPath:"/railwatch/ocr",workerBlobURL:false});

@@ -1,11 +1,13 @@
 "use client";
 
-import { cloneElement, useEffect, useId, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
-import { ArrowRight, Bell, Link2, X } from "lucide-react";
+import { useRef, useState, type FormEvent } from "react";
+import { ArrowRight, Bell, Link2 } from "lucide-react";
 import { addDays, bookingDay, formatDay, DEFAULT_CLOCK, journeySchema, REMINDER_KEYS, ruleSchema, type Journey, type Planner, type ReminderOverride, type Rule } from "@/lib/travel-planner";
 import { Select } from "./select";
 import s from "./planner.module.css";
 import { weekday, type TicketAttachment } from "@/lib/travel-planner";
+import { TicketViewer } from "./ticket-viewer";
+import { ActionMenu } from "./action-menu";
 import { deleteTicketFile, downloadTicketFile, extractTicketFile, saveTicketFile, validateTicketFile } from "@/lib/ticket-files";
 import type { TicketDetails } from "@/lib/ticket-details";
 
@@ -14,38 +16,37 @@ export const STATUS = { needs_booking: "To Book", booked: "Booked", skipped: "Sk
 export const TIME_LABELS = { any: "Any time", morning: "Morning", afternoon: "Afternoon", evening: "Evening", night: "Night" };
 export const REMINDER_LABELS = { previous_evening: "The evening before", morning: "On booking day", opening: "Near booking opening" };
 
-export function Field({ label, children, hint }: { label: string; children: ReactElement; hint?: string }) {
-  const id = useId();
-  return <div className={s.field}><label htmlFor={id}>{label}</label>{cloneElement(children as ReactElement<{ id: string; "aria-describedby"?: string }>, { id, "aria-describedby": hint ? `${id}-hint` : undefined })}{hint && <small id={`${id}-hint`}>{hint}</small>}</div>;
-}
-export function Modal({ title, subtitle, children, close, wide = false }: { title: string; subtitle?: string; children: ReactNode; close: () => void; wide?: boolean }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { const dialog = ref.current; dialog?.showModal(); return () => dialog?.close(); }, []);
-  return <dialog ref={ref} className={`${s.modal} ${wide ? s.wideModal : ""}`} onCancel={close} aria-labelledby="editor-title" onClick={e => { if (e.target === e.currentTarget) close(); }}><header className={s.modalHead}><div><h2 id="editor-title">{title}</h2>{subtitle && <p>{subtitle}</p>}</div><button type="button" className={s.iconButton} onClick={close} aria-label="Close Dialog"><X size={20} /></button></header>{children}</dialog>;
-}
+export {Field,Modal} from "./form-ui";
+import {Field} from "./form-ui";
+/** Edits the selected reminder moments and their IST delivery times. */
 export function ReminderTimes({ times, clock }: { times: Planner["settings"]["reminderTimes"]; clock: Planner["settings"]["reminderClock"] }) {
   return <div className={s.reminderTimes}>{REMINDER_KEYS.map(key => <div key={key}><label className={s.check}><input name="reminderTimes" type="checkbox" value={key} defaultChecked={times.includes(key)} />{REMINDER_LABELS[key]}</label><input aria-label={`${REMINDER_LABELS[key]} time`} type="time" name={`clock_${key}`} defaultValue={clock[key]} required /></div>)}</div>;
 }
+/** Selects inherited, disabled, or custom reminder behavior for a routine or journey. */
 export function ReminderFields({ initial, settings, routine = false,enabled=true }: { enabled?:boolean;initial?: ReminderOverride; settings: Planner["settings"]; routine?: boolean }) {
   const [mode, setMode] = useState(initial?.mode ?? "inherit");
   if(!enabled)return null;
   return <section className={s.formSection}><h3><Bell size={16} /> Booking Reminders</h3><Field label="Reminder Preference"><Select name="reminderMode" value={mode} onChange={e => setMode(e.target.value as ReminderOverride["mode"])}><option value="inherit">{routine ? "Use default reminders" : "Use routine / default reminders"}</option><option value="off">No reminders for this {routine ? "routine" : "journey"}</option><option value="custom">Customize reminders</option></Select></Field>{mode === "custom" && <ReminderTimes times={initial?.times ?? settings.reminderTimes} clock={initial?.clock ?? settings.reminderClock} />}</section>;
 }
+/** Parses reminder controls into the persisted override structure. */
 export function remindersFromForm(form: FormData): ReminderOverride {
   return { mode: String(form.get("reminderMode") ?? "inherit") as ReminderOverride["mode"], times: form.getAll("reminderTimes") as ReminderOverride["times"], clock: Object.fromEntries(REMINDER_KEYS.map(k => [k, String(form.get(`clock_${k}`) ?? DEFAULT_CLOCK[k])])) as ReminderOverride["clock"] };
 }
+/** Renders weekday selection using the instance-defined first day of the week. */
 export function Weekdays({ name = "weekdays", selected = [], weekStartsOn=0 }: { name?: string; selected?: number[];weekStartsOn?:number }) {
   return <div className={s.weekdays}>{Array.from({length:7},(_,i)=>(i+weekStartsOn)%7).map(d => <label key={d}><input type="checkbox" name={name} value={d} defaultChecked={selected.includes(d)} /><span>{DAYS[d]}</span></label>)}</div>;
 }
 
+/** Validates recurrence inputs and preserves linked routine settings when saving. */
 export function RuleForm({ rule, planner, today, save, fail,remindersEnabled=true }: { remindersEnabled?:boolean;rule?: Partial<Rule>; planner: Planner; today: string; save: (rule: Rule) => void; fail: (message: string) => void }) {
   const initial = rule?.recurrence;
   const [start, setStart] = useState(rule?.start ?? today);
   const [preset, setPreset] = useState(initial && initial.interval > 1 || !initial && (rule?.intervalWeeks ?? 1) > 1 ? "custom" : initial?.frequency === "monthly" ? `monthly_${initial.monthlyPattern}` : initial?.frequency ?? "weekly");
   const [unit, setUnit] = useState(initial?.frequency ?? "weekly");
   const frequency = preset === "custom" ? unit : preset.startsWith("monthly") ? "monthly" : preset;
+    /** Validates the active form and submits its account-scoped changes. */
   function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault(); const form = new FormData(e.currentTarget); const str = (key: string) => String(form.get(key) ?? "");
+    e.preventDefault(); const form = new FormData(e.currentTarget); const /** Reads a form field as a string. */ str = (key: string) => String(form.get(key) ?? "");
     const selected = form.getAll("weekdays").map(Number);
     const interval = preset === "custom" ? Number(form.get("interval")) : 1;
     const result = ruleSchema.safeParse({ ...rule, id: rule?.id ?? crypto.randomUUID(), name: str("name"), from: str("from"), to: str("to"), start, end: str("end") || null, weekdays: frequency === "weekly" ? selected : [weekday(start)], intervalWeeks: Math.min(interval, 12), recurrence: { frequency, interval, monthlyPattern: str("monthlyPattern") || "date", dayOfMonth: Number(form.get("dayOfMonth") ?? start.slice(-2)), ordinal: Number(form.get("ordinal") ?? Math.ceil(Number(start.slice(-2)) / 7)), weekday: Number(form.get("monthlyWeekday") ?? weekday(start)) }, timePreference: "any", departure: "20:00", train: "", travelClass: "", windowDays: planner.settings.bookingWindowDays, originOffset: 0, returnAfterDays: null, returnDeparture: "20:00", returnTrain: "", returnOriginOffset: 0, linkedRuleId: str("linkedRuleId") || undefined, excludedDates: [], paused: rule?.paused ?? false, reminderOverride: remindersEnabled ? remindersFromForm(form) : rule?.reminderOverride });
@@ -68,23 +69,27 @@ export function RuleForm({ rule, planner, today, save, fail,remindersEnabled=tru
   </form>;
 }
 
+/** Edits monthly recurrence by date or weekday occurrence. */
 function MonthlyPattern({ pattern, start, initial, customizable,weekStartsOn }: {weekStartsOn:number; pattern: string; start: string; initial?: Rule["recurrence"]; customizable: boolean }) {
   const [choice, setChoice] = useState(pattern);
   // Re-mount when switching the preset so the visible pattern matches it.
   return <div className={s.monthlyFields}>{customizable ? <Field label="Monthly Pattern"><Select name="monthlyPattern" value={choice} onChange={e => setChoice(e.target.value)}><option value="date">Day of the month</option><option value="weekday">Weekday of the month</option></Select></Field> : <input type="hidden" name="monthlyPattern" value={choice} />}{choice === "date" ? <Field label="Day Of The Month"><input name="dayOfMonth" type="number" min={1} max={31} defaultValue={initial?.dayOfMonth ?? Number(start.slice(-2))} required /></Field> : <div className={s.formGrid}><Field label="Week Of The Month"><Select name="ordinal" defaultValue={initial?.ordinal ?? Math.ceil(Number(start.slice(-2)) / 7)}>{[[1, "First"], [2, "Second"], [3, "Third"], [4, "Fourth"], [5, "Fifth"], [-1, "Last"]].map(([value, label]) => <option value={value} key={value}>{label}</option>)}</Select></Field><Field label="Weekday"><Select name="monthlyWeekday" defaultValue={initial?.weekday ?? weekday(start)}>{Array.from({length:7},(_,i)=>(i+weekStartsOn)%7).map(i => <option value={i} key={i}>{DAYS[i]}</option>)}</Select></Field></div>}</div>;
 }
 
+/** Edits journey status, booking dates, ticket details, and attachment suggestions. */
 export function JourneyForm({ journey, date, planner, today, save, fail, ticket = false,remindersEnabled=true,uploadsEnabled=true }: { remindersEnabled?:boolean;uploadsEnabled?:boolean;journey?: Journey; date?: string; planner: Planner; today: string; save: (journey: Journey) => boolean | Promise<boolean>; fail: (message: string) => void; ticket?: boolean }) {
   const ref = useRef<HTMLFormElement>(null);
   const [status, setStatus] = useState<Journey["status"]>(ticket ? "booked" : journey?.status ?? "needs_booking");
   const [travelDate,setTravelDate]=useState(journey?.date ?? date ?? addDays(today,61));
   const bookingDate=bookingDay({date:travelDate||today,windowDays:planner.settings.bookingWindowDays,originOffset:0});
+  const [viewBlob,setViewBlob]=useState<Blob>();const [viewTicket,setViewTicket]=useState<TicketAttachment>();
   const [files, setFiles] = useState<TicketAttachment[]>(journey?.attachments ?? []);
   const staged = useRef(new Map<string, File>());
   const [busy, setBusy] = useState(false);
   const [detected, setDetected] = useState<TicketDetails>({});
   const [extraction, setExtraction] = useState("");
   const showTicket = status !== "needs_booking" && status !== "skipped" || Boolean(journey?.pnr || journey?.train || journey?.trainName || files.length);
+    /** Stages an attachment and extracts reviewable ticket suggestions before saving. */
   async function upload(file?: File) {
     if (!file) return;
     try {
@@ -96,13 +101,15 @@ export function JourneyForm({ journey, date, planner, today, save, fail, ticket 
     } catch (e) { fail(e instanceof Error ? e.message : "Could not attach this file."); }
     finally { setBusy(false); }
   }
+    /** Copies reviewed suggestions into ticket controls while preserving controlled travel-date state. */
   function applyDetails() {
     if(detected.date)setTravelDate(detected.date);
     for (const [key, value] of Object.entries(detected)) { const field = ref.current?.elements.namedItem(key); if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) {field.value = value;field.dispatchEvent(new Event("change",{bubbles:true}));} }
     setExtraction("Detected details applied. Review them before saving."); setDetected({});
   }
+    /** Validates the active form and submits its account-scoped changes. */
   async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault(); if (busy) return; const form = new FormData(e.currentTarget); const str = (key: string) => String(form.get(key) ?? "").trim();
+    e.preventDefault(); if (busy) return; const form = new FormData(e.currentTarget); const /** Reads a form field as a string. */ str = (key: string) => String(form.get(key) ?? "").trim();
     if (str("from").toLowerCase() === str("to").toLowerCase()) { fail("Choose different departure and arrival stations."); return; }
     const details = showTicket ? { trainName: str("trainName"), trainNumber: str("trainNumber"), train: str("trainName").slice(0, 80), travelClass: str("travelClass"), pnr: str("pnr"), coach: str("coach"), seat: str("seat"), berth: str("berth"), departure: str("departure") || "20:00", departureConfirmed: Boolean(str("departure")) } : { train: journey?.train ?? "", travelClass: journey?.travelClass ?? "", pnr: journey?.pnr ?? "", departure: journey?.departure ?? "20:00" };
     const result = journeySchema.safeParse({ ...journey, ...details, id: journey?.id ?? crypto.randomUUID(), from: str("from"), to: str("to"), date: str("date"), timePreference: "any", windowDays: planner.settings.bookingWindowDays, originOffset: 0, bookingDateOverride: undefined, status, notes: str("notes"), attachments: files, reminderOverride: (remindersEnabled ? remindersFromForm(form) : journey?.reminderOverride), manualOverride: journey?.ruleId ? true : journey?.manualOverride });
@@ -121,7 +128,8 @@ export function JourneyForm({ journey, date, planner, today, save, fail, ticket 
     <div className={s.formGrid}><Field label="Travel Date"><input type="date" name="date" value={travelDate} onChange={e=>setTravelDate(e.target.value)} required /></Field><Field label="Journey Status"><Select name="status" value={status} onChange={e => setStatus(e.target.value as Journey["status"])}>{Object.entries(STATUS).map(([id, label]) => <option value={id} key={id}>{label}</option>)}</Select></Field></div>
     <section className={s.bookingSummary}><b>Booking Opens</b><strong>{travelDate ? formatDay(bookingDate,{weekday:"long",day:"numeric",month:"long",year:"numeric"}) : "Choose a travel date"}</strong><span>8:00 AM IST · {planner.settings.bookingWindowDays} days before travel</span></section>
     {showTicket && <section className={s.formSection}><h3>Ticket Details <span className={s.optional}>All optional</span></h3>{uploadsEnabled&&<Field label="Upload Ticket PDF Or QR Image" hint="PDF, PNG, JPEG or WebP · up to 10 MB each. Review detected details before applying."><input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={busy} onChange={e => { void upload(e.target.files?.[0]); e.target.value = ""; }} /></Field>}
-      {files.map(file => <div className={s.fileRow} key={file.id}><span>{file.name}<small>{(file.size / 1024).toFixed(0)} KB</small></span><button type="button" className={s.textButton} onClick={() => downloadTicketFile(file, staged.current.get(file.id)).catch(e => fail(e.message))}>Download</button><button type="button" className={s.iconButton} disabled={busy} aria-label={`Remove ${file.name}`} onClick={() => { staged.current.delete(file.id); setFiles(files.filter(f => f.id !== file.id)); }}><X size={16} /></button></div>)}
+      {viewTicket&&<TicketViewer file={viewTicket} blob={viewBlob} close={()=>setViewTicket(undefined)}/>}
+      {files.map(file => <div className={s.fileRow} key={file.id}><span>{file.name}<small>{(file.size / 1024).toFixed(0)} KB</small></span><button type="button" className={s.secondary} onClick={()=>{setViewBlob(staged.current.get(file.id));setViewTicket(file);}}>View Ticket</button><ActionMenu label={"Ticket Actions For "+file.name} disabled={busy} actions={[{label:"Download Ticket",onClick:()=>void downloadTicketFile(file,staged.current.get(file.id)).catch(e=>fail(e.message))},{label:"Remove Ticket",danger:true,onClick:()=>{if(confirm("Remove this ticket file from the journey?")){staged.current.delete(file.id);setFiles(files.filter(f=>f.id!==file.id));}}}]}/></div>)}
       {extraction && <div className={s.extraction} role="status"><p>{extraction}</p>{Object.keys(detected).length > 0 && <><dl>{Object.entries(detected).map(([key, value]) => <div key={key}><dt>{key.replace(/([A-Z])/g, " $1")}</dt><dd>{value}</dd></div>)}</dl><button type="button" className={s.secondary} onClick={applyDetails}>Apply detected details</button></>}</div>}
       <div className={s.formGrid}><Field label="Train Number"><input name="trainNumber" maxLength={20} defaultValue={journey?.trainNumber} placeholder="e.g. 12637" /></Field><Field label="Train Name"><input name="trainName" maxLength={100} defaultValue={journey?.trainName ?? journey?.train} placeholder="Optional" /></Field><Field label="Travel Class"><Select name="travelClass" defaultValue={journey?.travelClass ?? ""}><option value="">Not recorded</option>{["SL", "3A", "2A", "1A", "3E", "CC", "EC", "2S"].map(c => <option key={c}>{c}</option>)}</Select></Field><Field label="PNR"><input name="pnr" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} defaultValue={journey?.pnr} placeholder="Optional 10-digit PNR" /></Field><Field label="Coach"><input name="coach" maxLength={20} defaultValue={journey?.coach} placeholder="e.g. B1" /></Field><Field label="Seat Number"><input name="seat" maxLength={30} defaultValue={journey?.seat} placeholder="e.g. 42" /></Field><Field label="Berth"><input name="berth" maxLength={30} defaultValue={journey?.berth} placeholder="e.g. Lower / LB" /></Field><Field label="Departure Time (IST)"><input name="departure" type="time" defaultValue={journey?.departureConfirmed ? journey.departure : ""} /></Field></div>
     </section>}

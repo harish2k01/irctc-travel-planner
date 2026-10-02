@@ -8,6 +8,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 const schema = z.object({ email: z.string().trim().email() });
 const genericMessage = "If that account exists, a password reset link has been sent.";
 
+/** Creates an expiring reset link without disclosing whether the email has an account. */
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);

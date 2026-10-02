@@ -6,7 +6,7 @@ it("completes booked journeys after the IST travel day without changing cancella
  const planner={...EMPTY_PLANNER,journeys:[booked,cancellation]};
  expect(reconcileJourneyLifecycle(planner,todayIST(new Date("2026-10-02T18:29:59Z")))).toBe(planner);
  const next=reconcileJourneyLifecycle(planner,todayIST(new Date("2026-10-02T18:30:00Z")));
- expect(next.journeys).toEqual([{...booked,status:"completed"},cancellation]);
+ expect(next.journeys).toEqual([{...booked,status:"completed",completedAt:"2026-10-03"},cancellation]);
  expect(reconcileJourneyLifecycle(next,"2026-10-03")).toBe(next);
 });
 it("retains cancellations for seven days and archives them without losing ticket information",()=>{

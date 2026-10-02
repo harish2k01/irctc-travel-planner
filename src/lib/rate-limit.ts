@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 
 type BucketRow = { count: number; resetAt: Date };
 
+/** Resolves the client address through the trusted request headers. */
 function clientAddress(request: Request) {
   return request.headers.get("cf-connecting-ip")
     ?? request.headers.get("x-real-ip")
@@ -12,10 +13,12 @@ function clientAddress(request: Request) {
     ?? "unknown";
 }
 
+/** Hashes the resolved client address for private rate-limit accounting. */
 export function requestIpHash(request: Request) {
   return stableHash(clientAddress(request));
 }
 
+/** Atomically consumes a rate-limit bucket and rejects excess attempts. */
 export async function enforceRateLimit(
   request: Request,
   scope: string,

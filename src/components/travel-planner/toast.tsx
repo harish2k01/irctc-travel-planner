@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, CircleAlert, X } from "lucide-react";
 import s from "./planner.module.css";
 
+/** Shows dismissible feedback at the bottom right, including inside native dialogs. */
 export function Toast({ message, dismiss, undo, error = false }: { message: string; dismiss: () => void; undo?: () => void; error?: boolean }) {
   const surface = useRef<HTMLDivElement>(null);
   const [host,setHost]=useState<HTMLDialogElement|null>(null);

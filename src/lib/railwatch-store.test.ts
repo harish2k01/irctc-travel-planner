@@ -1,7 +1,7 @@
 import { describe,it,expect } from "vitest";
-import { validateWorkspace } from "./railplan-store";
-import { googleEvents } from "./railplan-google";
-import { reminderJobs } from "./railplan-jobs";
+import { validateWorkspace } from "./railwatch-store";
+import { googleEvents } from "./railwatch-google";
+import { reminderJobs } from "./railwatch-jobs";
 import { EMPTY_PLANNER,type Journey } from "./travel-planner";
 const j:Journey={id:"j",from:"A",to:"B",date:"2026-12-01",windowDays:60,originOffset:0,departure:"20:00",train:"",pnr:"1234567890",travelClass:"",status:"needs_booking",notes:""};
 describe("account planner policies",()=>{

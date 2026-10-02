@@ -1,3 +1,4 @@
+import {logger} from "./logger";
 import { randomUUID } from "node:crypto";
 import { prisma } from "./db";
 import { encryptSecret } from "./crypto";
@@ -5,6 +6,7 @@ import { ApiError } from "./http";
 import { getFeaturePolicy } from "./settings";
 import { getProviderConfiguration,resolveProviderConfiguration,telegramConfigured } from "./provider-config";
 import { receiveTelegramUpdate,telegramRequest,telegramUpdateSchema } from "./telegram";
+/** Leases outgoing bot polling, processes pairing commands, and durably advances the update cursor. */
 export async function pollTelegram(){
  const policy=await getFeaturePolicy(),config=await getProviderConfiguration();let bot=config.telegram;
  if(!policy.telegramEnabled||!policy.remindersEnabled||!bot||!telegramConfigured(config))return 0;
@@ -26,9 +28,9 @@ export async function pollTelegram(){
    if(reply)await telegramRequest(bot.botToken,"sendMessage",{chat_id:reply.chat_id,text:reply.text});
    offset=Math.max(offset,parsed.data.update_id+1);count++;
   }
- }catch{error="Telegram messages could not be checked. Verify the bot connection and ensure this bot is not used by another application.";}
+ }catch(e){logger.error("telegram.poll_failed",{errorType:e instanceof Error?e.name:"UnknownError"});error="Telegram messages could not be checked. Verify the bot connection and ensure this bot is not used by another application.";}
  finally{
   await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "AppSettings" WHERE id='global' FOR UPDATE`;const settings=await tx.appSettings.findUniqueOrThrow({where:{id:"global"}});if(settings.telegramPollLease!==lease)return;const current=resolveProviderConfiguration(settings.providerConfig);if(current.telegram?.id===bot.id){current.telegram.pollOffset=offset;current.telegram.polling=activated;current.telegram.pollError=error;current.telegram.lastPolledAt=new Date().toISOString();await tx.appSettings.update({where:{id:"global"},data:{providerConfig:encryptSecret(JSON.stringify(current)),telegramPollLease:null,telegramPollUntil:null}});}else await tx.appSettings.update({where:{id:"global"},data:{telegramPollLease:null,telegramPollUntil:null}});});
  }
- return count;
+ if(count)logger.info("telegram.poll_completed",{messages:count});return count;
 }

@@ -1,2 +1,3 @@
 import { bookingInstant,todayIST,type Journey } from "./travel-planner";
+/** Calculates the dashboard booking-status segments from the current booking window. */
 export function journeyOverview(journeys:Journey[],now:Date){const today=todayIST(now),upcoming=journeys.filter(j=>!j.archivedAt&&j.date>=today);const booked=upcoming.filter(j=>j.status==="booked").length,toBook=upcoming.filter(j=>j.status==="needs_booking"&&bookingInstant(j)<=now).length,toCancel=upcoming.filter(j=>j.status==="cancellation_needed").length,total=booked+toBook+toCancel;return {booked,toBook,toCancel,total,bookedPercent:total?Math.round(booked/total*100):0,bookedAngle:total?booked/total*100:0,toBookAngle:total?(booked+toBook)/total*100:0};}

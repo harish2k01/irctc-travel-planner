@@ -1,6 +1,7 @@
 import { encryptSecret } from "@/lib/crypto";
 import { prisma } from "@/lib/db";
 
+/** Checks database connectivity before admitting backend traffic. */
 export async function GET() {
   try {
     encryptSecret("readiness");

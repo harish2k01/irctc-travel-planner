@@ -4,6 +4,7 @@ import { getSessionState } from "@/lib/backend-client";
 
 export const dynamic = "force-dynamic";
 
+/** Renders the account authentication screen using backend session state. */
 export default async function Home() {
   const { user: currentUser, firstSignup, allowSignups } = await getSessionState();
   if (currentUser && !currentUser.mustResetPassword) redirect("/");

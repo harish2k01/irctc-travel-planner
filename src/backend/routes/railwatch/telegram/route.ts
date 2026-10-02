@@ -8,6 +8,7 @@ import { getProviderConfiguration,telegramConfigured,telegramLoginConfigured } f
 import { sendTelegram,telegramRecipient,tokenHash } from "@/lib/telegram";
 import { beginTelegramLogin } from "@/lib/telegram-login";
 import { enforceRateLimit } from "@/lib/rate-limit";
+/** Performs account-bound Telegram pairing, preference, disconnect, or test actions. */
 export async function POST(request:Request){try{
  assertSameOrigin(request);const user=await requireUser();await enforceRateLimit(request,"telegram:connection:"+user.id,10,60000);const input=await parseJson(request,z.object({action:z.enum(["authorize","pair","connect","disconnect","enable","pause","test"])}).strict(),1024);
  if(input.action==="disconnect"){await prisma.railTelegram.deleteMany({where:{userId:user.id}});return jsonData({saved:true});}

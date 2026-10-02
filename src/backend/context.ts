@@ -5,6 +5,7 @@ type Context = { values: Record<string, string | undefined>; outgoing: string[] 
 const requests = new AsyncLocalStorage<Context>();
 
 // Each request owns its cookie jar, including concurrent sign-ins and callbacks.
+/** Runs a route with isolated request headers and response cookies using async-local storage. */
 export async function withRequestContext(request: Request, handler: () => Promise<Response>) {
   const context: Context = { values: parse(request.headers.get("cookie") ?? ""), outgoing: [] };
   return requests.run(context, async () => {
@@ -15,6 +16,7 @@ export async function withRequestContext(request: Request, handler: () => Promis
   });
 }
 
+/** Returns the cookie jar bound to the current backend request. */
 export async function cookies() {
   const context = requests.getStore();
   if (!context) throw new Error("Cookies require a backend request context.");
