@@ -1,0 +1,6 @@
+import { expect,it } from "vitest";
+import { journeyOverview } from "./journey-overview";
+import type { Journey } from "./travel-planner";
+const base:Journey={id:"j",from:"A",to:"B",date:"2026-12-01",windowDays:60,originOffset:0,departure:"20:00",train:"",travelClass:"",pnr:"",notes:"",status:"needs_booking"};
+it("counts only open unbooked journeys and uses all three statuses as the denominator",()=>{const journeys=[...Array.from({length:10},(_,i)=>({...base,id:"b"+i,status:"booked" as const})),base,...Array.from({length:3},(_,i)=>({...base,id:"c"+i,status:"cancellation_needed" as const})),{...base,id:"future",date:"2027-01-01"},{...base,id:"cancelled",status:"cancelled" as const},{...base,id:"archived",archivedAt:"2026-10-01"},{...base,id:"past",date:"2026-09-01"}];expect(journeyOverview(journeys,new Date("2026-10-02T02:29:59Z"))).toMatchObject({booked:10,toBook:0,toCancel:3,total:13,bookedPercent:77});expect(journeyOverview(journeys,new Date("2026-10-02T02:30:00Z"))).toMatchObject({booked:10,toBook:1,toCancel:3,total:14,bookedPercent:71});});
+it("handles an empty chart without division by zero",()=>{expect(journeyOverview([],new Date())).toEqual({booked:0,toBook:0,toCancel:0,total:0,bookedPercent:0,bookedAngle:0,toBookAngle:0});});

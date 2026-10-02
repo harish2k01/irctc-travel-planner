@@ -1,3 +1,4 @@
+import { recordInAppReminder } from "./in-app-notifications";
 import { getProviderConfiguration,telegramConfigured } from "./provider-config";
 import { sendTelegram } from "./telegram";
 import { createHash,randomUUID } from "node:crypto";
@@ -39,6 +40,7 @@ export async function processRailplan(now=new Date()){
       const actual=currentPolicy.remindersEnabled&&(job.kind!=="WHATSAPP"||currentPolicy.whatsappEnabled)&&(job.kind!=="TELEGRAM"||currentPolicy.telegramEnabled)&&planner&&workspace?.user.isActive?reminderJobs(planner,now).find(j=>j.key===job.key):undefined;
       if(!actual){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"CANCELLED",lease:null,leaseUntil:null}});continue;}
       if(job.kind==="WHATSAPP"&&!await whatsappReady()){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"PENDING",attempts:{decrement:1},dueAt:new Date(now.getTime()+300000),lastError:"WhatsApp setup is incomplete.",lease:null,leaseUntil:null}});continue;}
+      if(job.kind==="IN_APP"){if(await recordInAppReminder({id:job.id,userId:job.userId,lease,journeyId:actual.journeyId,dueAt:actual.dueAt},now))sent++;continue;}
       const journey=planner!.journeys.find(j=>j.id===actual.journeyId)!;
       const providerId=job.kind==="WHATSAPP"?await sendWhatsApp(planner!.settings.whatsappNumber,journey):job.kind==="TELEGRAM"?await sendTelegram(planner!.settings.telegramChatId,actual.message,planner!.settings.telegramProviderId):undefined;
       await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"SENT",sentAt:now,providerId,lastError:null,lease:null,leaseUntil:null}});sent++;
