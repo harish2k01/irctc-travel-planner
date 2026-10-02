@@ -47,7 +47,7 @@ Deployment charts and Argo CD definitions are being kept locally until GitOps de
 
 ## Ticket files and retention
 
-Uploaded PDF and image originals are encrypted in PostgreSQL's `RailFile` table. They are not stored on a frontend or backend pod filesystem. Open **View Ticket** in Ticket Vault or a journey's attachments to read the original inside RailWatch; PDFs support page navigation. Download and remove actions use the attachment menu.
+Uploaded PDF originals are encrypted in PostgreSQL's `RailFile` table. They are not stored on a frontend or backend pod filesystem. Open **View Ticket** in Ticket Vault or a journey's attachments to read the original inside RailWatch; PDFs support page navigation. Images and QR codes extract details locally and are not uploaded or stored. Download and remove actions use the attachment menu.
 
 The backend scheduler permanently removes original files seven days after cancellation or completion, including for disabled accounts. It also removes their attachment references atomically. Journey history, entered ticket details, and notes remain available in the archive. Historical database backups retain their own independent retention policy.
 
