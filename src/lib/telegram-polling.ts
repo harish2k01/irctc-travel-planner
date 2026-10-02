@@ -6,11 +6,15 @@ import { getFeaturePolicy } from "./settings";
 import { getProviderConfiguration,resolveProviderConfiguration,telegramConfigured } from "./provider-config";
 import { receiveTelegramUpdate,telegramRequest,telegramUpdateSchema } from "./telegram";
 export async function pollTelegram(){
- const policy=await getFeaturePolicy(),config=await getProviderConfiguration(),bot=config.telegram;
+ const policy=await getFeaturePolicy(),config=await getProviderConfiguration();let bot=config.telegram;
  if(!policy.telegramEnabled||!policy.remindersEnabled||!bot||!telegramConfigured(config))return 0;
  const now=new Date(),lease=randomUUID();
  const acquired=await prisma.appSettings.updateMany({where:{id:"global",OR:[{telegramPollLease:null},{telegramPollUntil:{lte:now}}]},data:{telegramPollLease:lease,telegramPollUntil:new Date(now.getTime()+90000)}});
  if(!acquired.count)return 0;
+ // Read the cursor after obtaining the lease: a previous worker may have just advanced it.
+ const fresh=(await getProviderConfiguration()).telegram;
+ if(!fresh||fresh.id!==bot.id){await prisma.appSettings.updateMany({where:{id:"global",telegramPollLease:lease},data:{telegramPollLease:null,telegramPollUntil:null}});return 0;}
+ bot=fresh;
  let offset=bot.pollOffset??0,count=0,error:string|undefined,activated=Boolean(bot.polling);
  try{
   // Upgrade existing installations from webhooks without dropping pending messages.
