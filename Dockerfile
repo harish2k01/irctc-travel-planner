@@ -30,7 +30,9 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=builder --chown=node:node /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder --chown=node:node /app/prisma ./prisma
+COPY --from=builder --chown=node:node /app/build/backend ./build/backend
+COPY --from=builder --chown=node:node /app/scripts/start-service.mjs ./scripts/start-service.mjs
 USER node
-EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD wget -qO- http://127.0.0.1:3000/api/health/live >/dev/null || exit 1
-CMD ["node", "server.js"]
+EXPOSE 3000 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "const port=process.env.RAILWATCH_SERVICE==='backend'?(process.env.BACKEND_PORT||3001):(process.env.PORT||3000);fetch('http://127.0.0.1:'+port+'/api/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "scripts/start-service.mjs"]

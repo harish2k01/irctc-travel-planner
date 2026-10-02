@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "crypto";
-import { cookies } from "next/headers";
+import { cookies } from "@/backend/context";
 import { ApiError } from "@/lib/http";
 import { requestIpHash } from "@/lib/rate-limit";
 import { prisma } from "@/lib/db";
@@ -38,7 +38,7 @@ export async function createSession(userId: string, request?: Request) {
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: (process.env.APP_URL ?? "http://localhost").startsWith("https:"),
     path: "/",
     expires: expiresAt,
     priority: "high",

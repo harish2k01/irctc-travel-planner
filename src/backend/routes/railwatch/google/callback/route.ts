@@ -1,6 +1,6 @@
 import { getProviderConfiguration,googleConfigured,resolveProviderConfiguration } from "@/lib/provider-config";
 import { getFeaturePolicy } from "@/lib/settings";
-import { cookies } from "next/headers";
+import { cookies } from "@/backend/context";
 import { timingSafeEqual } from "node:crypto";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";

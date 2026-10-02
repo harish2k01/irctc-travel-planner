@@ -23,7 +23,7 @@ The callback is reached by the user's browser after consent, not by a Telegram s
 Open **User Settings > Connections > Telegram Reminders** and choose either:
 
 - **Connect With Telegram**: authorize on Telegram's screen. The browser returns to RailWatch and opens Connections with a success or failure message.
-- **Pair With Code**: copy the displayed `/connect XXXX-XXXX-XXXX` command and send it in the bot's private chat. The command expires in ten minutes and works once. Do not send a plain `/start`; the bot now explains how to pair. The worker checks every minute, and the settings panel checks for connection automatically.
+- **Pair With Code**: copy the displayed `/connect XXXX-XXXX-XXXX` command and send it in the bot's private chat. The command expires in ten minutes and works once. Do not send a plain `/start`; the bot now explains how to pair. The backend checks every minute, and the settings panel checks for connection automatically.
 
 Select **Send Test Reminder** after connecting. **Refresh Connection** always reports whether the account is linked. One Telegram chat can belong to one RailWatch account at a time; disconnect the original account before switching.
 
