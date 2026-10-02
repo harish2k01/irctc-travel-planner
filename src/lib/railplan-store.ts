@@ -1,3 +1,5 @@
+import { getProviderConfiguration,telegramConfigured } from "./provider-config";
+import { telegramRecipient } from "./telegram";
 import { getFeaturePolicy } from "./settings";
 import type { FeaturePolicy } from "./feature-policy";
 import { Prisma } from "@prisma/client";
@@ -16,30 +18,30 @@ export function validateWorkspace(value: unknown): Planner {
   const days = planner.settings.bookingWindowDays;
   return plannerSchema.parse({ ...planner, journeys: planner.journeys.map(j => ({...j,windowDays:days,originOffset:0,bookingDateOverride:undefined})), rules:planner.rules.map(r=>({...r,windowDays:days})) });
 }
-export function applyAccountSettings(planner:Planner,policy:FeaturePolicy,phoneNumber:string):Planner {
-return {...planner,settings:{...planner.settings,weekStartsOn:policy.weekStartsOn,routineHorizonMode:policy.routineHorizonMode,routineMonthsAhead:policy.routineMonthsAhead,routineTicketCount:policy.routineTicketCount,bookingWindowDays:policy.bookingWindowDays,whatsappNumber:phoneNumber,whatsappEnabled:planner.settings.whatsappEnabled&&policy.remindersEnabled&&policy.whatsappEnabled&&Boolean(phoneNumber)},journeys:planner.journeys.map(j=>({...j,windowDays:policy.bookingWindowDays,originOffset:0,bookingDateOverride:undefined})),rules:planner.rules.map(r=>({...r,windowDays:policy.bookingWindowDays}))};
+export function applyAccountSettings(planner:Planner,policy:FeaturePolicy,phoneNumber:string,telegram:{chatId:string|null;enabled:boolean;providerId:string}|null=null,telegramProviderId?:string):Planner {
+return {...planner,settings:{...planner.settings,telegramChatId:policy.telegramEnabled&&policy.remindersEnabled?telegramRecipient(telegram,telegramProviderId):"",telegramProviderId:telegramProviderId??"",telegramEnabled:Boolean(policy.telegramEnabled&&policy.remindersEnabled&&telegramRecipient(telegram,telegramProviderId)),weekStartsOn:policy.weekStartsOn,routineHorizonMode:policy.routineHorizonMode,routineMonthsAhead:policy.routineMonthsAhead,routineTicketCount:policy.routineTicketCount,bookingWindowDays:policy.bookingWindowDays,whatsappNumber:phoneNumber,whatsappEnabled:planner.settings.whatsappEnabled&&policy.remindersEnabled&&policy.whatsappEnabled&&Boolean(phoneNumber)},journeys:planner.journeys.map(j=>({...j,windowDays:policy.bookingWindowDays,originOffset:0,bookingDateOverride:undefined})),rules:planner.rules.map(r=>({...r,windowDays:policy.bookingWindowDays}))};
 }
 async function lock(tx: Prisma.TransactionClient, userId: string) { await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`; }
 export async function loadWorkspace(userId: string, now = new Date()) {
-  const policy=await getFeaturePolicy();
+  const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
   return prisma.$transaction(async tx => {
     await lock(tx,userId);
-    const user=await tx.user.findUniqueOrThrow({where:{id:userId}});
-    const initial=applyAccountSettings(EMPTY_PLANNER,policy,user.phoneNumber??"");
+    const user=await tx.user.findUniqueOrThrow({where:{id:userId}});const telegram=await tx.railTelegram.findUnique({where:{userId}});
+    const initial=applyAccountSettings(EMPTY_PLANNER,policy,user.phoneNumber??"",telegram,telegramProviderId);
     const existing = await tx.railWorkspace.findUnique({where:{userId}});
     if (!existing) { const record = await tx.railWorkspace.create({data:{userId,payload:encryptSecret(JSON.stringify(initial))}}); return {planner:initial,revision:record.version}; }
-    const planner=decodeWorkspace(existing.payload); const extended=extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??""),todayIST(now));
+    const planner=decodeWorkspace(existing.payload); const extended=extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??"",telegram,telegramProviderId),todayIST(now));
     if (JSON.stringify(extended) !== JSON.stringify(planner)) { const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(extended)),version:{increment:1}}}); return {planner:extended,revision:record.version}; }
     return {planner,revision:existing.version};
   },{timeout:20000});
 }
 export async function saveWorkspace(userId: string, value: unknown, revision: number) {
-  const policy=await getFeaturePolicy();
+  const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
   const input=plannerSchema.parse(value);
   if(input.settings.whatsappEnabled&&(!policy.whatsappEnabled||!policy.remindersEnabled))throw new ApiError(403,"WhatsApp reminders are disabled by the administrator.","FEATURE_DISABLED");
   return prisma.$transaction(async tx => {
-    await lock(tx,userId); const user=await tx.user.findUniqueOrThrow({where:{id:userId}});
-    const planner=validateWorkspace(applyAccountSettings(input,policy,user.phoneNumber??""));
+    await lock(tx,userId); const user=await tx.user.findUniqueOrThrow({where:{id:userId}});const telegram=await tx.railTelegram.findUnique({where:{userId}});
+    const planner=validateWorkspace(applyAccountSettings(input,policy,user.phoneNumber??"",telegram,telegramProviderId));
     const current=await tx.railWorkspace.findUnique({where:{userId}});
     if (!current || current.version !== revision) throw new ApiError(409,"Your plans changed in another session. Reload the latest version before saving.","VERSION_CONFLICT");
     const files=planner.journeys.flatMap(j=>j.attachments??[]);

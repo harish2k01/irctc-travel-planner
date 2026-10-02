@@ -1,3 +1,6 @@
+import { receiveTelegramUpdate,tokenHash,telegramChatHash } from "./telegram";
+import type { TelegramConfiguration } from "./provider-config";
+import { decryptSecret } from "./crypto";
 import { randomUUID } from "node:crypto";
 import { describe,it,expect,afterEach,vi } from "vitest";
 import { prisma } from "./db";
@@ -28,4 +31,32 @@ describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",()=>{
     }finally{await prisma.appSettings.update({where:{id:"global"},data:{bookingWindowDays:previous.bookingWindowDays,remindersEnabled:previous.remindersEnabled,whatsappEnabled:previous.whatsappEnabled}});}
   });
 
+});
+
+describe.skipIf(process.env.RUN_DB_TESTS!=="1")("Telegram account connections",()=>{
+ it("accepts private one-time links, rejects expired/replayed/group links, and stops reminders",async()=>{
+  const f=await fixture(),other=await fixture(),settings=await prisma.appSettings.findUniqueOrThrow({where:{id:"global"}});
+  const bot:TelegramConfiguration={botToken:"123456789:"+"a".repeat(35),botUsername:"RailWatchBot",id:"test-bot",webhookSecret:"test-secret",webhookReady:true};
+  const token="a".repeat(43),chatId=123456789;const update={update_id:1,message:{text:"/start "+token,chat:{id:chatId,type:"private"},from:{id:chatId,is_bot:false,username:"traveler"}}};
+  try{
+   await prisma.appSettings.update({where:{id:"global"},data:{telegramEnabled:true,remindersEnabled:true,providerConfig:encryptSecret(JSON.stringify({telegram:bot}))}});
+   await prisma.railTelegram.create({data:{userId:f.user.id,providerId:bot.id,linkTokenHash:tokenHash(token),linkExpiresAt:new Date(Date.now()+60000)}});
+   expect(await receiveTelegramUpdate({...update,message:{...update.message,chat:{id:chatId,type:"group"}}},bot)).toBeNull();
+   expect(await receiveTelegramUpdate({...update,message:{...update.message,from:{id:chatId+1}}},bot)).toBeNull();
+   expect(await receiveTelegramUpdate(update,bot)).toMatchObject({method:"sendMessage",chat_id:String(chatId)});
+   const stored=await prisma.railTelegram.findUniqueOrThrow({where:{userId:f.user.id}});expect(stored.chatId).toMatch(/^enc:v1:/);expect(decryptSecret(stored.chatId)).toBe(String(chatId));expect(stored.linkTokenHash).toBeNull();expect(await receiveTelegramUpdate(update,bot)).toBeNull();
+   const loaded=await loadWorkspace(f.user.id);expect(loaded.planner.settings.telegramEnabled).toBe(true);expect((await loadWorkspace(other.user.id)).planner.settings.telegramChatId).toBe("");
+   const forged=await loadWorkspace(other.user.id);const saved=await saveWorkspace(other.user.id,{...forged.planner,settings:{...forged.planner.settings,telegramEnabled:true,telegramChatId:String(chatId),telegramProviderId:bot.id}},forged.revision);expect(saved.planner.settings.telegramEnabled).toBe(false);expect(saved.planner.settings.telegramChatId).toBe("");
+   await prisma.railTelegram.create({data:{userId:other.user.id,providerId:bot.id,linkTokenHash:tokenHash("b".repeat(43)),linkExpiresAt:new Date(Date.now()-1000)}});expect(await receiveTelegramUpdate({...update,message:{...update.message,text:"/start "+"b".repeat(43)}},bot)).toBeNull();
+   await prisma.railTelegram.update({where:{userId:other.user.id},data:{linkExpiresAt:new Date(Date.now()+60000)}});expect(await receiveTelegramUpdate({...update,message:{...update.message,text:"/start "+"b".repeat(43)}},bot)).toBeNull();
+   expect(await receiveTelegramUpdate({...update,message:{...update.message,text:"/stop"}},bot)).toMatchObject({method:"sendMessage"});expect((await loadWorkspace(f.user.id)).planner.settings.telegramEnabled).toBe(false);
+   expect(await receiveTelegramUpdate(update,{...bot,id:"rotated"})).toBeNull();
+   await prisma.railTelegram.update({where:{userId:f.user.id},data:{enabled:true}});await prisma.appSettings.update({where:{id:"global"},data:{telegramEnabled:false}});expect((await loadWorkspace(f.user.id)).planner.settings.telegramEnabled).toBe(false);
+  }finally{await prisma.appSettings.update({where:{id:"global"},data:{providerConfig:settings.providerConfig,telegramEnabled:settings.telegramEnabled,remindersEnabled:settings.remindersEnabled}});}
+ });
+ it("delivers scheduled Telegram messages once and cancels future reminders after disconnect",async()=>{
+  const f=await fixture(),settings=await prisma.appSettings.findUniqueOrThrow({where:{id:"global"}});const bot:TelegramConfiguration={botToken:"123456789:"+"a".repeat(35),botUsername:"RailWatchBot",id:"delivery-bot",webhookSecret:"test-secret",webhookReady:true};const fetch=vi.fn().mockResolvedValue({ok:true,json:async()=>({ok:true,result:{message_id:42}})});vi.stubGlobal("fetch",fetch);
+  try{await prisma.appSettings.update({where:{id:"global"},data:{telegramEnabled:true,remindersEnabled:true,providerConfig:encryptSecret(JSON.stringify({telegram:bot}))}});await prisma.railTelegram.create({data:{userId:f.user.id,providerId:bot.id,enabled:true,chatId:encryptSecret("123456789"),chatHash:telegramChatHash(bot.id,"123456789")}});const today=todayIST(),now=new Date(today+"T08:00:00+05:30"),current=await loadWorkspace(f.user.id);await saveWorkspace(f.user.id,{...current.planner,journeys:[{id:"telegram-delivery",from:"A",to:"B",date:addDays(today,60),departure:"20:00",train:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",pnr:"",notes:""}]},current.revision);await processRailplan(now);const sent=fetch.mock.calls.length;expect(sent).toBeGreaterThan(0);expect(fetch.mock.calls.every(call=>new URL(call[0]).hostname === "api.telegram.org")).toBe(true);await processRailplan(now);expect(fetch).toHaveBeenCalledTimes(sent);await prisma.railTelegram.delete({where:{userId:f.user.id}});expect((await loadWorkspace(f.user.id)).planner.settings.telegramEnabled).toBe(false);
+  }finally{vi.unstubAllGlobals();await prisma.appSettings.update({where:{id:"global"},data:{providerConfig:settings.providerConfig,telegramEnabled:settings.telegramEnabled,remindersEnabled:settings.remindersEnabled}});}
+ });
 });

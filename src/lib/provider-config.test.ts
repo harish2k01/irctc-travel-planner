@@ -19,7 +19,7 @@ describe("provider credential configuration",()=>{
   it("uses environment credentials as a fallback but respects explicit removal",()=>{
     const env={GOOGLE_CLIENT_ID:google.clientId,GOOGLE_CLIENT_SECRET:google.clientSecret,WHATSAPP_ACCESS_TOKEN:whatsapp.accessToken};
     expect(resolveProviderConfiguration(null,env).google?.clientSecret).toBe(google.clientSecret);
-    expect(resolveProviderConfiguration(encryptSecret(JSON.stringify({google:null,whatsapp:null})),env)).toEqual({google:null,whatsapp:null});
+    expect(resolveProviderConfiguration(encryptSecret(JSON.stringify({google:null,whatsapp:null})),env)).toEqual({telegram:null,google:null,whatsapp:null});
     const cleared=updateProviderConfiguration({google,whatsapp},{google:null});expect(cleared.googleChanged).toBe(true);expect(cleared.next.whatsapp).toEqual(whatsapp);
   });
   it("rejects incomplete credentials and unsafe endpoint components",()=>{

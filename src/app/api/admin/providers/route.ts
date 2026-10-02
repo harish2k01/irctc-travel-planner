@@ -12,6 +12,7 @@ export async function PATCH(request:Request){try{
     await tx.$queryRaw`SELECT id FROM "AppSettings" WHERE id='global' FOR UPDATE`;
     const settings=await tx.appSettings.findUniqueOrThrow({where:{id:"global"}});const changed=updateProviderConfiguration(resolveProviderConfiguration(settings.providerConfig),input);
     await tx.appSettings.update({where:{id:"global"},data:{providerConfig:changed.payload}});
+    if(changed.telegramChanged)await tx.railTelegram.deleteMany({});
     if(changed.googleChanged)await tx.railGoogle.updateMany({data:{enabled:false,lease:null,leaseUntil:null,lastError:"Google configuration changed. Reconnect your Google account in User Settings."}});
     return providerSummary(changed.next);
   });
