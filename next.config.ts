@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   compress: true,
   async headers() {
-    const headers = [{ source: "/:path*", headers: securityHeaders }];
+    const headers = [{ source: "/:path*", headers: securityHeaders }, { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache, no-store, must-revalidate" }, { key: "Service-Worker-Allowed", value: "/" }] }];
     // OCR uses same-origin WebAssembly; JavaScript eval is permitted only for development debugging.
     if (process.env.NODE_ENV === "development") {
       headers.push({ source: "/:path*", headers: securityHeaders.map((header) => header.key === "Content-Security-Policy"

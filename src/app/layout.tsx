@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -17,8 +17,12 @@ export const metadata: Metadata = {
   description: "Plan train journeys, manage tickets, and get booking reminders.",
   icons: {
     icon: "/icon.svg",
+    apple: "/icons/apple-touch-icon.png",
   },
+  appleWebApp: { capable: true, title: "RailWatch", statusBarStyle: "default" },
 };
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#161b22" };
 
 /** Applies the application metadata, fonts, and shared root document. */
 export default function RootLayout({

@@ -20,8 +20,8 @@ Reviewed against merged main on 2 October 2026. This is a current implementation
 | Reminder recovery | Jobs have leases, retries and eligibility checks. Schedules more than 24 hours old are excluded; add explicit missed-reminder/outage handling and an operator retry view. |
 | Notification control | The header inbox has read/dismiss and failure states. A paginated notification history, snooze, quiet hours and detailed per-journey delivery timeline remain absent. |
 | Large accounts | The API reads/saves an encrypted whole workspace and the browser filters it. Server pagination/search, accurate paginated aggregates and realistic account-scale performance tests remain. |
-| Calendar and planning | CSV holiday import and ICS export exist. ICS holiday import, a mobile agenda, overflow accessibility and actionable duplicate/overlap/leave-conflict suggestions remain. |
-| Editing and navigation | Journey dialogs exist, but linkable individual journey URLs and unsaved-change protection still need implementation. |
+| Calendar and planning | CSV holiday import, ICS export and a month agenda exist. ICS holiday import, broader overflow accessibility and actionable duplicate/overlap/leave-conflict suggestions remain. |
+| Editing and navigation | Journey summaries and guarded item editors exist. Linkable individual journey URLs and unsaved-change protection for account/admin settings remain. |
 | Production operations | Logs and readiness checks exist. Queue/heartbeat/backup-age metrics and alerts, agreed latency/lateness targets, an off-cluster restore rehearsal, rollback rehearsal and broader accessibility/visual-regression validation remain gates. |
 
 The operational items above require evidence in the current installation. A successful build or unit test is not proof of backup recoverability or provider delivery.
@@ -31,6 +31,8 @@ The operational items above require evidence in the current installation. A succ
 Dashboard and Kanban replaced the proposed Today/Trips table. Holidays & Leave remains a separate page. Telegram is the chosen first external reminder channel; Discord is not an outstanding requirement. Week start and booking-window controls are shared administrator settings. Routine horizon defaults to six months. Browser push and automatic ticket booking remain outside scope.
 
 PNR providers, offline ticket access and Tatkal-specific planning were optional follow-up ideas, not blockers for the planning/reminder core. PDF import, originally optional, is now implemented. Google Calendar and WhatsApp adapters exist, but their external setup and actual live delivery must be verified when they are enabled.
+
+Standalone PWA installation metadata, mobile navigation and an offline reconnect screen are implemented. No private account data or ticket PDFs are cached by the worker. Physical Android/iPhone installation, keyboard and safe-area checks remain acceptance work after rollout; see mobile-pwa.md and ux-review.md.
 
 ## Cleanup boundaries
 
