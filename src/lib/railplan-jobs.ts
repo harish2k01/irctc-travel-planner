@@ -1,4 +1,5 @@
 import { recordInAppReminder } from "./in-app-notifications";
+import { pollTelegram } from "./telegram-polling";
 import { getProviderConfiguration,telegramConfigured } from "./provider-config";
 import { sendTelegram } from "./telegram";
 import { createHash,randomUUID } from "node:crypto";
@@ -23,6 +24,7 @@ export function reminderJobs(planner:Planner,now:Date){
   }return result;
 }
 export async function processRailplan(now=new Date()){
+  await pollTelegram();
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
   const workspaces=await prisma.railWorkspace.findMany({where:{user:{isActive:true}},select:{userId:true}});
   for(const {userId} of workspaces){const {planner}=await loadWorkspace(userId,now);const jobs=policy.remindersEnabled?reminderJobs(planner,now).filter(j=>(j.kind!=="WHATSAPP"||policy.whatsappEnabled)&&(j.kind!=="TELEGRAM"||policy.telegramEnabled)):[];
