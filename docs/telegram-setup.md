@@ -34,3 +34,19 @@ Reminder times come from **User Settings > Preferences**, with routine and journ
 Apply migration `20261002000600_telegram_login` before upgrading the web app and worker. Pending authorization state and PKCE verifiers expire after ten minutes; verifiers are encrypted. Polling has a database lease and an encrypted update cursor so concurrent workers do not read the same batch. Network failure after Telegram accepts a reply but before its cursor is recorded can produce a repeated reply.
 
 Official documentation: https://core.telegram.org/bots/telegram-login and https://core.telegram.org/bots/api#getupdates.
+
+## Bot appearance and copy
+
+In BotFather, use `/mybots`, select your RailWatch bot, and choose Edit Bot. Set the bot name to RailWatch. Upload `assets/telegram/railwatch-avatar.png` as the bot picture and `assets/telegram/railwatch-welcome.png` under Edit Description Picture. The welcome image is shown with the bot introduction; it is not attached to every reminder.
+
+Description:
+
+> Your journeys. Right on time. RailWatch reminds you when booking opens for your planned train journeys. Connect your account from RailWatch → User Settings → Connections to receive reminders based on your preferences. Send /stop to pause. Book and cancel tickets through IRCTC.
+
+About text:
+
+> Train booking reminders from your RailWatch instance. Your journeys. Right on time.
+
+Booking reminders show the route, travel date, booking date and opening time. They do not include PNRs, passenger names or private notes. An Open RailWatch button links to My Journeys when APP_URL uses HTTPS; local HTTP instances omit that button. Email invitations, password resets and test messages include branded HTML plus a plain-text fallback.
+
+Official BotFather appearance documentation: https://core.telegram.org/bots/features#botfather

@@ -1,3 +1,4 @@
+import {emailTemplate} from "./message-templates";
 import { logger } from "./logger";
 import nodemailer from "nodemailer";
 import { getDeliveryConfiguration } from "@/lib/settings";
@@ -8,7 +9,7 @@ function appUrl() {
 }
 
 /** Sends an email through the saved SMTP connection with bounded timeouts and safe outcome logging. */
-async function send(to: string, subject: string, text: string) {
+async function send(to: string, subject: string, text: string, action?:{label:string;url:string}) {
   const config = await getDeliveryConfiguration();
   if (!config.smtpUrl) return { sent: false as const, reason: "Email delivery is not configured." };
   const transporter = nodemailer.createTransport({
@@ -17,7 +18,7 @@ async function send(to: string, subject: string, text: string) {
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
   });
-  try{const result = await transporter.sendMail({ from: config.emailFrom, to, subject, text });
+  try{const result = await transporter.sendMail({ from: config.emailFrom, to, subject, ...emailTemplate(subject,text,action) });
   if (!result.accepted?.some(address => String(address).toLowerCase() === to.toLowerCase())) throw new Error("SMTP did not accept the recipient.");
   logger.info("smtp.sent",{accepted:result.accepted?.length??0});return { sent: true as const };
   }catch(error){const e=error as {code?:string;command?:string;responseCode?:number};logger.error("smtp.failed",{code:e.code,command:e.command,responseCode:e.responseCode,reason:smtpFailureReason(error)});throw error;}finally{transporter.close();}
@@ -32,7 +33,7 @@ export function sendInvitationEmail(email: string, token: string) {
     `Set your password using this one-time link: ${url}`,
     "",
     "The link expires in 24 hours.",
-  ].join("\n"));
+  ].join("\n"),{label:"Set Up Account",url});
 }
 
 /** Sends a one-use password-reset link without disclosing account credentials. */
@@ -44,11 +45,11 @@ export function sendPasswordResetEmail(email: string, token: string) {
     `Choose a new password using this one-time link: ${url}`,
     "",
     "The link expires in 30 minutes. Ignore this message if you did not request it.",
-  ].join("\n"));
+  ].join("\n"),{label:"Reset Password",url});
 }
 
 /** Tests delivery to the signed-in administrator through the saved SMTP settings. */
-export function sendTestEmail(email:string){return send(email,"RailWatch email test","Email delivery is working for your RailWatch account.");}
+export function sendTestEmail(email:string){return send(email,"RailWatch email test","Your email connection is working.\n\nRailWatch can now deliver invitations and password resets.",{label:"Open RailWatch",url:appUrl()});}
 
 /** Maps SMTP protocol failures to actionable messages without exposing credentials or recipient addresses. */
 export function smtpFailureReason(error:unknown){const e=error as {code?:string;command?:string;responseCode?:number};if(e.code==="EENVELOPE"&&e.command==="MAIL FROM")return "SMTP rejected the sender address. Set Sender to an address or verified alias allowed by your SMTP account.";if(e.code==="EAUTH")return "SMTP authentication failed. Check the username and password.";if(e.code==="ETIMEDOUT")return "SMTP timed out. Check the host, port, and network access.";if(e.code==="ESOCKET")return "Could not connect to SMTP. Check the host, port, and TLS settings.";return "SMTP did not accept the test email. Check the saved connection, sender address, and recipient.";}

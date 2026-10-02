@@ -28,7 +28,7 @@ describe("email transport", () => {
 
   it("links password resets to the one-time reset page", async () => {
     await sendPasswordResetEmail("user@example.invalid", "test-token");
-    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("/set-password?token=test-token&type=reset") }));
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("/set-password?token=test-token&type=reset"),html:expect.stringContaining("Reset Password") }));
   });
 
   it("does not report a rejected recipient as success", async () => { mocks.send.mockResolvedValue({accepted:[],rejected:["user@example.invalid"]}); await expect(sendTestEmail("user@example.invalid")).rejects.toThrow(/did not accept/); });
