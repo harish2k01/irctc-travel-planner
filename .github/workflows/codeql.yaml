@@ -1,23 +1,39 @@
 name: CodeQL
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Default-branch scans provide the baseline for PR alerts.
+  push:
     branches: [main]
   schedule:
     - cron: "17 3 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  security-events: write
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
+          build-mode: none
+          queries: security-extended
       - uses: github/codeql-action/analyze@v4
+        with:
+          category: .github/workflows/codeql.yaml:analyze
