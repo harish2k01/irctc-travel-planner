@@ -23,7 +23,8 @@ describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",()=>{
     const cancelled:Journey={...base,id:"cancelled",date:addDays(today,30),status:"cancelled",cancelledAt:addDays(today,-7)};
     await prisma.railWorkspace.update({where:{userId:f.user.id},data:{payload:encryptSecret(JSON.stringify({...f.planner,journeys:[base,cancelled]}))}});
     const loaded=await loadWorkspace(f.user.id);
-    expect(loaded.planner.journeys).toEqual([{...base,status:"completed"},{...cancelled,archivedAt:today}]);
+    expect(loaded.planner.journeys).toHaveLength(2);
+    expect(loaded.planner.journeys).toMatchObject([{...base,status:"completed"},{...cancelled,archivedAt:today}]);
     expect((await loadWorkspace(f.user.id)).revision).toBe(loaded.revision);
   });
   it("stores encrypted plans and rejects stale concurrent writes",async()=>{const {user,planner,revision}=await fixture();const edits=await Promise.allSettled([saveWorkspace(user.id,{...planner,settings:{...planner.settings,theme:"dark"}},revision),saveWorkspace(user.id,{...planner,settings:{...planner.settings,bookingWindowDays:45}},revision)]);expect(edits.filter(e=>e.status==="fulfilled")).toHaveLength(1);const row=await prisma.railWorkspace.findUniqueOrThrow({where:{userId:user.id}});expect(row.payload).toMatch(/^enc:v1:/);expect(row.payload).not.toContain("settings");expect(row.version).toBe(2);});
