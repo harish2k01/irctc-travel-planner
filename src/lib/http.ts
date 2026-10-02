@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { NextResponse } from "next/server";
+
 import { ZodError, type ZodType } from "zod";
 import { logger } from "@/lib/logger";
 
@@ -64,14 +64,14 @@ export async function parseJson<T>(request: Request, schema: ZodType<T>, maxByte
 export function jsonData<T>(data: T, init?: ResponseInit) {
   const headers = new Headers(init?.headers);
   headers.set("Cache-Control", "private, no-store, max-age=0");
-  return NextResponse.json({ data }, { ...init, headers });
+  return Response.json({ data }, { ...init, headers });
 }
 
 export function routeError(error: unknown, request?: Request) {
   const requestId = request?.headers.get("x-request-id") ?? randomUUID();
 
   if (error instanceof ApiError) {
-    return NextResponse.json(
+    return Response.json(
       { error: { code: error.code, message: error.message, details: error.details }, requestId },
       { status: error.status, headers: { "x-request-id": requestId } },
     );
@@ -79,7 +79,7 @@ export function routeError(error: unknown, request?: Request) {
 
   if (error instanceof Response) return error;
   if (error instanceof ZodError) {
-    return NextResponse.json(
+    return Response.json(
       { error: { code: "VALIDATION_ERROR", message: "Review the submitted values.", details: error.flatten() }, requestId },
       { status: 400, headers: { "x-request-id": requestId } },
     );
@@ -90,7 +90,7 @@ export function routeError(error: unknown, request?: Request) {
     path: request ? new URL(request.url).pathname : undefined,
     error: error instanceof Error ? error.message : String(error),
   });
-  return NextResponse.json(
+  return Response.json(
     { error: { code: "INTERNAL_ERROR", message: "The request could not be completed." }, requestId },
     { status: 500, headers: { "x-request-id": requestId } },
   );

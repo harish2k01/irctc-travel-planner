@@ -1,16 +1,13 @@
 import { redirect } from "next/navigation";
 import { AuthScreen } from "@/components/auth-screen";
-import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
-import { getAppSettings } from "@/lib/settings";
+import { getSessionState } from "@/lib/backend-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  if (!process.env.DATABASE_URL) return <AuthScreen mode="missingDatabase" allowSignups={false} />;
-  const [currentUser, userCount, settings] = await Promise.all([getCurrentUser(), prisma.user.count(), getAppSettings()]);
+  const { user: currentUser, firstSignup, allowSignups } = await getSessionState();
   if (currentUser && !currentUser.mustResetPassword) redirect("/");
-  if (currentUser?.mustResetPassword) return <AuthScreen mode="resetPassword" allowSignups={settings.allowSignups} />;
-  if (userCount === 0) return <AuthScreen mode="firstSignup" allowSignups />;
-  return <AuthScreen mode="login" allowSignups={settings.allowSignups} />;
+  if (currentUser?.mustResetPassword) return <AuthScreen mode="resetPassword" allowSignups={allowSignups} />;
+  if (firstSignup) return <AuthScreen mode="firstSignup" allowSignups />;
+  return <AuthScreen mode="login" allowSignups={allowSignups} />;
 }

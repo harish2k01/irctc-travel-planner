@@ -4,11 +4,11 @@ The dashboard is at `/`, authentication at `/login`, and each section has its ow
 
 ## Local Run
 
-Run `docker compose up --build` for PostgreSQL, migrations, the app on port 3000, and a worker. Compose credentials are for development only; its named volume persists across updates. Alternatively configure `.env` from `.env.example`, install dependencies, generate Prisma, apply migrations, and run `npm run dev`. Background work requires a scheduled authenticated POST to `/api/internal/railwatch/process` every minute.
+Run `docker compose up --build` for PostgreSQL, migrations, a frontend on port 3000, and a persistent backend. Compose credentials are for development only; its named volume persists across updates. Alternatively configure `.env` from `.env.example`, install dependencies, generate Prisma, apply migrations, and run `npm run dev`. The backend scheduler runs automatically; no external cron or worker is required. See [service architecture](service-architecture.md).
 
 ## Manual Kubernetes Deployment
 
-Pin `ghcr.io/harish2k01/railwatch` to the digest in the release's `image.json` asset. The homelab deployment uses namespace `railwatch`, PostgreSQL 18 with database/user `railwatch`, two web replicas, a minute worker CronJob, and daily database backups. Deployment manifests remain local until GitOps is enabled.
+Pin `ghcr.io/harish2k01/railwatch` to the digest in the release's `image.json` asset. The homelab deployment uses namespace `railwatch`, PostgreSQL 18 with database/user `railwatch`, separate frontend and backend replicas, a backend scheduler, and daily database backups. Deployment manifests remain local until GitOps is enabled.
 
 The public URL is `https://railwatch.k8s.harish2k01.xyz`. The HTTPRoute references `traefik/traefik-gateway`, listener `websecure`, and path prefix `/`. The existing `wildcard-k8s-tls` certificate covers this hostname; no additional certificate or Caddy site is required.
 
@@ -19,7 +19,7 @@ Set runtime `APP_URL` to the public HTTPS URL. Supply an externally managed `rai
 - `APP_ENCRYPTION_KEY`: base64 of 32 random bytes. Preserve and back up this key separately.
 - Independent random `CRON_SECRET` and `RATE_LIMIT_SALT` values.
 
-Never commit populated secrets. Run Prisma migrations before rollout, then verify readiness, worker execution, and HTTPS. Supply registry credentials if the GHCR package is private. Backups contain encrypted plans and ticket files; restoration also requires the original encryption key. Supplement daily cluster-storage backups with an off-cluster copy and a restore test.
+Never commit populated secrets. Run Prisma migrations before rollout, then verify readiness, backend scheduler execution, and HTTPS. Supply registry credentials if the GHCR package is private. Backups contain encrypted plans and ticket files; restoration also requires the original encryption key. Supplement daily cluster-storage backups with an off-cluster copy and a restore test.
 
 ## Accounts And Shared Settings
 
@@ -31,7 +31,7 @@ Users manage username, email, phone, preferences, connections, and passwords in 
 
 ## App Integrations
 
-Configure providers in Admin Settings / Integrations. Credentials are encrypted in PostgreSQL and never returned by the settings API. Empty secret fields retain stored values; explicit Remove buttons disable the provider, including environment fallback. Updates apply immediately without restarting pods. Environment variables remain supported when no in-app override is stored. Back up the database and encryption key together.
+Configure providers in Admin Settings / Integrations. Credentials are encrypted in PostgreSQL and never returned by the settings API. Empty secret fields retain stored values; the Remove Configuration action in each provider menu disable the provider, including environment fallback. Updates apply immediately without restarting pods. Environment variables remain supported when no in-app override is stored. Back up the database and encryption key together.
 
 ### WhatsApp
 
