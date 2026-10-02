@@ -91,12 +91,13 @@ export function JourneyForm({ journey, date, planner, today, save, fail, ticket 
       if (files.length >= 20) throw new Error("Keep up to 20 attachments per journey.");
       const metadata = validateTicketFile(file);
       staged.current.set(metadata.id, file); setFiles(old => [...old, metadata]); setBusy(true); setDetected({}); setExtraction("Reading your ticket…");
-      try { const result = await extractTicketFile(file); setDetected(result.details); setExtraction(result.message); }
+      try { const result = await extractTicketFile(file,setExtraction); setDetected(result.details); setExtraction(result.message); }
       catch { setExtraction("The file is attached, but could not be read. Enter the details manually below."); }
     } catch (e) { fail(e instanceof Error ? e.message : "Could not attach this file."); }
     finally { setBusy(false); }
   }
   function applyDetails() {
+    if(detected.date)setTravelDate(detected.date);
     for (const [key, value] of Object.entries(detected)) { const field = ref.current?.elements.namedItem(key); if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement) {field.value = value;field.dispatchEvent(new Event("change",{bubbles:true}));} }
     setExtraction("Detected details applied. Review them before saving."); setDetected({});
   }

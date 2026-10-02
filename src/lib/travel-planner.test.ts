@@ -43,7 +43,7 @@ describe("expanded recurrence and journey history", () => {
   });
   it("retains ticket data in every status transition including cancellation and completion", () => {
     const ticket = { ...journey, trainName: "Express", pnr: "1234567890", seat: "42", attachments: [{ id: "f", name: "ticket.pdf", type: "application/pdf" as const, size: 100, createdAt: "2026-10-01T00:00:00Z" }] };
-    for (const status of ["booked", "needs_booking", "cancellation_needed", "cancelled", "completed"] as const) expect(transitionJourney(ticket, status)).toEqual({ ...ticket, status });
+    for (const status of ["booked", "needs_booking", "cancellation_needed", "cancelled", "completed"] as const) expect(transitionJourney(ticket, status)).toMatchObject({ ...ticket, status });
   });
   it("excludes archived and completed journeys from calendar exports", () => {
     const text = calendarFile({ ...EMPTY_PLANNER, journeys: [{ ...journey, status: "completed" }, { ...journey, id: "archived", archivedAt: "2026-10-01" }] });

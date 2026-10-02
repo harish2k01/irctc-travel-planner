@@ -1,3 +1,10 @@
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, readdir } from "node:fs/promises";
 await mkdir("public/railplan", { recursive: true });
 await cp("node_modules/pdfjs-dist/build/pdf.worker.min.mjs", "public/railplan/pdf.worker.min.mjs");
+const target = "public/railwatch/ocr";
+await mkdir(target, { recursive: true });
+await cp("node_modules/tesseract.js/dist/worker.min.js", `${target}/worker.min.js`);
+await cp("node_modules/@tesseract.js-data/eng/4.0.0/eng.traineddata.gz", `${target}/eng.traineddata.gz`);
+for (const name of await readdir("node_modules/tesseract.js-core")) {
+  if (/^tesseract-core.*\.wasm(?:\.js)?$/.test(name)) await cp(`node_modules/tesseract.js-core/${name}`, `${target}/${name}`);
+}

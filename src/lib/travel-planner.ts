@@ -23,7 +23,7 @@ export const journeySchema = z.object({
   departureConfirmed: z.boolean().optional(),
   bookingDateOverride: daySchema.optional(),
   trainNumber: z.string().max(20).optional(), trainName: z.string().max(100).optional(), coach: z.string().max(20).optional(), seat: z.string().max(30).optional(), berth: z.string().max(30).optional(),
-  archivedAt: daySchema.optional(), attachments: z.array(attachmentSchema).max(20).optional(),
+  cancelledAt: daySchema.optional(), archivedAt: daySchema.optional(), attachments: z.array(attachmentSchema).max(20).optional(),
   status: statusSchema, pnr: z.string().regex(/^$|^\d{10}$/), notes: z.string().max(1000),
 });
 export const ruleSchema = z.object({
@@ -111,6 +111,21 @@ export function saveRule(planner: Planner, rule: Rule, today = todayIST()): Plan
   const additions = generated.filter(j => !preservedIds.has(j.id)).map(j => ({ ...j, notes: existing.get(j.id)?.notes ?? "" }));
   return { ...planner, rules: [...planner.rules.filter(r => r.id !== rule.id), rule], journeys: [...preserved, ...additions] };
 }
+export const CANCELLED_RETENTION_DAYS = 7;
+export function reconcileJourneyLifecycle(planner:Planner,today:string):Planner{
+ let changed=false;
+ const journeys=planner.journeys.map(j=>{
+  if(j.archivedAt)return j;
+  if(j.status==="booked"&&j.date<today){changed=true;return {...j,status:"completed" as const};}
+  if(j.status==="cancelled"||j.status==="skipped"){
+   const cancelledAt=j.cancelledAt&&j.cancelledAt<=today?j.cancelledAt:today;
+   const archivedAt=daysBetween(cancelledAt,today)>=CANCELLED_RETENTION_DAYS?today:undefined;
+   if(cancelledAt!==j.cancelledAt||archivedAt){changed=true;return {...j,cancelledAt,archivedAt};}
+  }else if(j.cancelledAt){changed=true;return {...j,cancelledAt:undefined};}
+  return j;
+ });
+ return changed?{...planner,journeys}:planner;
+}
 export function extendRoutines(planner: Planner, today: string): Planner {
   let next = planner;
   for (const rule of planner.rules.filter(r => !r.paused)) next = saveRule(next, rule, today);
@@ -126,7 +141,7 @@ export function recurrenceLabel(rule: Rule) {
   const pattern = r.monthlyPattern === "date" ? `day ${r.dayOfMonth}` : `${r.ordinal === -1 ? "last" : ["", "first", "second", "third", "fourth", "fifth"][r.ordinal]} ${days[r.weekday]}`;
   return `${n === 1 ? "Monthly" : `Every ${n} months`} · ${pattern}`;
 }
-export function transitionJourney(journey: Journey, status: JourneyStatus): Journey { return { ...journey, status, ...(journey.ruleId ? { manualOverride: true } : {}) }; }
+export function transitionJourney(journey: Journey, status: JourneyStatus): Journey { return { ...journey, status, cancelledAt:["cancelled","skipped"].includes(status)?(journey.status===status?journey.cancelledAt:todayIST()):undefined, ...(journey.ruleId ? { manualOverride: true } : {}) }; }
 export function saveLinkedRule(planner: Planner, rule: Rule, today = todayIST()): Planner {
   const target = planner.rules.find(r => r.id === rule.linkedRuleId);
   if (rule.linkedRuleId && (!target || target.id === rule.id)) throw new Error("Choose another existing routine to link.");
