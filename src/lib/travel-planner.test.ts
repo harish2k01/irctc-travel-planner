@@ -69,7 +69,7 @@ describe("customizable routines", () => {
     expect(() => generateJourneys({ ...rule, end: "2026-11-01" })).toThrow();
     const ongoing = generateJourneys({ ...rule, end: null, returnAfterDays: null }, "2026-12-01");
     expect(ongoing.length).toBeGreaterThan(20);
-    expect(ongoing.every(j => j.date <= addDays("2026-12-01", 180))).toBe(true);
+    expect(ongoing.every(j => j.date <= "2027-06-01")).toBe(true);
   });
   it("preserves booked tickets and skipped exceptions when editing a routine", () => {
     const planner = saveRule(EMPTY_PLANNER, rule);
@@ -182,3 +182,10 @@ describe("ongoing routines and overrides", () => {
     expect(EMPTY_PLANNER.settings).not.toHaveProperty("holidayLeadDays");
   });
 });
+
+ describe("admin routine planning limits",()=>{
+ const routine:Rule={id:"limits",name:"Weekly",from:"A",to:"B",train:"",travelClass:"",windowDays:60,originOffset:0,start:"2026-10-06",end:null,weekdays:[2],intervalWeeks:1,departure:"20:00",returnAfterDays:null,returnDeparture:"20:00",returnTrain:"",returnOriginOffset:0,paused:false,excludedDates:[]};
+ it("anchors the month boundary to today, including future starts",()=>{expect(generateJourneys({...routine,start:"2027-05-01"},"2026-10-02")).toEqual([]);const generated=generateJourneys(routine,"2026-10-02");expect(generated.at(-1)?.date).toBe("2027-03-30");});
+ it("fills and replenishes the configured count without duplicates",()=>{const settings={...EMPTY_PLANNER.settings,routineHorizonMode:"count" as const,routineTicketCount:3};const first=saveRule({...EMPTY_PLANNER,settings},routine,"2026-10-02");expect(first.journeys.map(j=>j.date)).toEqual(["2026-10-06","2026-10-13","2026-10-20"]);const later=extendRoutines(first,"2026-10-07");expect(later.journeys.filter(j=>j.date>="2026-10-07")).toHaveLength(3);expect(new Set(later.journeys.map(j=>j.id)).size).toBe(later.journeys.length);});
+ it("shrinks generated plans while preserving bookings and individual edits",()=>{const wide=saveRule(EMPTY_PLANNER,routine,"2026-10-02");wide.journeys[4].status="booked";wide.journeys[5].manualOverride=true;const narrow=extendRoutines({...wide,settings:{...wide.settings,routineHorizonMode:"count",routineTicketCount:2}},"2026-10-02");expect(narrow.journeys).toHaveLength(4);expect(narrow.journeys.some(j=>j.status==="booked")).toBe(true);expect(narrow.journeys.some(j=>j.manualOverride)).toBe(true);expect(extendRoutines(narrow,"2026-10-02")).toBe(narrow);});
+ });

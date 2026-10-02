@@ -48,3 +48,9 @@ Each user authorizes their own Google account under User Settings / Connections.
 ## Validation
 
 `npm run verify` checks types, lint, coverage, release logic, and production build. Database tests need `RUN_DB_TESTS=1` and an isolated database ending in `_test`. Browser tests need `RUN_E2E=1`, that isolated database, and Playwright Chromium. They reset the test database and cover private workspaces, routing, tickets, invitations, user access, and feature controls. Never run them against production. CI runs browser tests on PRs; release validation excludes them.
+
+### Shared Planning Controls
+
+Admin Settings > General controls the first weekday (Sunday by default) and recurring journey generation. The default is six calendar months from the current IST date, rather than six months from a future routine start. Alternatively, administrators can choose an upcoming journey count per routine (1-100). End dates remain an upper bound. Generated plans replenish when the workspace loads and during the reminder worker. Reducing a limit removes only future untouched To Book entries; booked tickets, archived history, past journeys, and individual overrides remain.
+
+Journey details show the calculated booking opening date at 8 AM IST. The header notification bell contains unread in-app booking reminders. Apply the `20261002000400_planning_controls` migration before starting the updated web app or worker.

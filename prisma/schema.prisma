@@ -78,6 +78,10 @@ model RateLimitBucket {
 }
 
 model AppSettings {
+  weekStartsOn Int @default(0)
+  routineHorizonMode String @default("months")
+  routineMonthsAhead Int @default(6)
+  routineTicketCount Int @default(26)
   id           String   @id
   allowSignups Boolean  @default(true)
   bookingWindowDays Int @default(60)

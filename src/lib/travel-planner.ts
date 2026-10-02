@@ -40,14 +40,14 @@ export const ruleSchema = z.object({
 export const holidaySchema = z.object({ id: z.string(), name: z.string().trim().min(1).max(100), date: daySchema, type: z.enum(["company", "leave"]) });
 export const plannerSchema = z.object({
   version: z.literal(1), journeys: z.array(journeySchema).max(10000), rules: z.array(ruleSchema).max(100), holidays: z.array(holidaySchema).max(3000),
-  settings: z.object({ whatsappEnabled: z.boolean().default(false), sidebarCollapsed: z.boolean().default(false), bookingWindowDays: z.number().int().min(1).max(365).default(60), theme: z.enum(["light", "dark"]).default("light"), weekendDays: z.array(z.number().int().min(0).max(6)).max(6), reminderTimes: z.array(z.enum(REMINDER_KEYS)), reminderClock: reminderClockSchema.default(DEFAULT_CLOCK), whatsappNumber: z.string().max(20) }),
+  settings: z.object({ weekStartsOn:z.union([z.literal(0),z.literal(1)]).default(0),routineHorizonMode:z.enum(["months","count"]).default("months"),routineMonthsAhead:z.number().int().min(1).max(24).default(6),routineTicketCount:z.number().int().min(1).max(100).default(26), whatsappEnabled: z.boolean().default(false), sidebarCollapsed: z.boolean().default(false), bookingWindowDays: z.number().int().min(1).max(365).default(60), theme: z.enum(["light", "dark"]).default("light"), weekendDays: z.array(z.number().int().min(0).max(6)).max(6), reminderTimes: z.array(z.enum(REMINDER_KEYS)), reminderClock: reminderClockSchema.default(DEFAULT_CLOCK), whatsappNumber: z.string().max(20) }),
 });
 export type Journey = z.infer<typeof journeySchema>;
 export type Rule = z.infer<typeof ruleSchema>;
 export type Holiday = z.infer<typeof holidaySchema>;
 export type Planner = z.infer<typeof plannerSchema>;
 export type JourneyStatus = Journey["status"];
-export const EMPTY_PLANNER: Planner = { version: 1, journeys: [], rules: [], holidays: [], settings: { whatsappEnabled: false, sidebarCollapsed: false, bookingWindowDays: 60, theme: "light", weekendDays: [0, 6], reminderTimes: ["previous_evening", "morning", "opening"], reminderClock: DEFAULT_CLOCK, whatsappNumber: "" } };
+export const EMPTY_PLANNER: Planner = { version: 1, journeys: [], rules: [], holidays: [], settings: { weekStartsOn:0,routineHorizonMode:"months",routineMonthsAhead:6,routineTicketCount:26,whatsappEnabled: false, sidebarCollapsed: false, bookingWindowDays: 60, theme: "light", weekendDays: [0, 6], reminderTimes: ["previous_evening", "morning", "opening"], reminderClock: DEFAULT_CLOCK, whatsappNumber: "" } };
 const DAY_MS = 86400000;
 export function isDay(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -66,13 +66,18 @@ export function bookingPhase(journey: Journey, now = new Date()) {
   if (bookingInstant(journey) > now) return "upcoming";
   return bookingDay(journey) === todayIST(now) ? "today" : "open";
 }
-export function generateJourneys(raw: Rule, today = todayIST()): Journey[] {
+export function generateJourneys(raw: Rule, today = todayIST(), settings = EMPTY_PLANNER.settings): Journey[] {
   const rule = ruleSchema.parse(raw);
   const result: Journey[] = [];
   const anchor = addDays(rule.start, -((weekday(rule.start) + 6) % 7));
   if (rule.paused) return result;
   const start = rule.start > today ? rule.start : today;
-  const horizon = addDays(start, 180);
+  const boundary = new Date(`${today}T00:00:00Z`);
+  const day = boundary.getUTCDate();
+  boundary.setUTCDate(1); boundary.setUTCMonth(boundary.getUTCMonth() + settings.routineMonthsAhead);
+  boundary.setUTCDate(Math.min(day, new Date(Date.UTC(boundary.getUTCFullYear(), boundary.getUTCMonth()+1,0)).getUTCDate()));
+  const countSpan = settings.routineTicketCount * (rule.recurrence?.frequency === "yearly" ? 366 * rule.recurrence.interval : rule.recurrence?.frequency === "monthly" ? 31 * rule.recurrence.interval : rule.recurrence?.frequency === "daily" ? rule.recurrence.interval : 7 * (rule.recurrence?.interval ?? rule.intervalWeeks)) + 366;
+  const horizon = settings.routineHorizonMode === "count" ? addDays(start, Math.min(countSpan, daysBetween(start,"9999-12-31"))) : boundary.toISOString().slice(0,10);
   const end = rule.end && rule.end < horizon ? rule.end : horizon;
   for (let date = start; date <= end; date = addDays(date, 1)) {
     const recurrence = rule.recurrence;
@@ -93,11 +98,12 @@ export function generateJourneys(raw: Rule, today = todayIST()): Journey[] {
       const returnDate = addDays(date, rule.returnAfterDays);
       result.push({ ...base, id: `${rule.id}:${date}:return`, date: returnDate, from: rule.to, to: rule.from, departure: rule.returnDeparture, train: rule.returnTrain, originOffset: rule.returnOriginOffset, leg: "return" });
     }
+    if(settings.routineHorizonMode === "count" && result.length >= settings.routineTicketCount) break;
   }
-  return result;
+  return settings.routineHorizonMode === "count" ? result.slice(0,settings.routineTicketCount) : result;
 }
 export function saveRule(planner: Planner, rule: Rule, today = todayIST()): Planner {
-  const generated = generateJourneys(rule, today);
+  const generated = generateJourneys({...rule,windowDays:planner.settings.bookingWindowDays}, today, planner.settings);
   const existing = new Map(planner.journeys.map(j => [j.id, j]));
   // Preserve booked tickets and explicit exceptions, including dates removed from the rule.
   const preserved = planner.journeys.filter(j => j.ruleId !== rule.id || j.status !== "needs_booking" || j.manualOverride || j.archivedAt || j.date < today);
@@ -106,9 +112,9 @@ export function saveRule(planner: Planner, rule: Rule, today = todayIST()): Plan
   return { ...planner, rules: [...planner.rules.filter(r => r.id !== rule.id), rule], journeys: [...preserved, ...additions] };
 }
 export function extendRoutines(planner: Planner, today: string): Planner {
-  const ids = new Set(planner.journeys.map(j => j.id)); const additions: Journey[] = [];
-  for (const rule of planner.rules.filter(r => !r.paused)) for (const journey of generateJourneys(rule, today)) if (!ids.has(journey.id)) { ids.add(journey.id); additions.push({ ...journey, windowDays: planner.settings.bookingWindowDays }); }
-  return additions.length ? { ...planner, journeys: [...planner.journeys, ...additions] } : planner;
+  let next = planner;
+  for (const rule of planner.rules.filter(r => !r.paused)) next = saveRule(next, rule, today);
+  return JSON.stringify(next) === JSON.stringify(planner) ? planner : next;
 }
 export function recurrenceLabel(rule: Rule) {
   const r = rule.recurrence;
