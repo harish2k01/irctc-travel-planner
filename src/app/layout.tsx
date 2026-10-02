@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     icon: "/icon.svg",
     apple: "/icons/apple-touch-icon.png",
   },
-  appleWebApp: { capable: true, title: "RailWatch", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "RailWatch", statusBarStyle: "black" },
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#161b22" };

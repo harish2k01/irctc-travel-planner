@@ -36,3 +36,17 @@ it("never intercepts private API or PDF requests and uses only the public fallba
   expect(await navigation).toBe("offline");
   expect(fetches).toEqual(["https://railwatch.test/journeys"]);
 });
+
+it("shows a replaceable journey notification and opens only the same-origin journey page", async () => {
+  const handlers: Record<string,(event:unknown)=>void> = {};
+  let notification: unknown;let opened="";
+  runInNewContext(readFileSync("public/sw.js","utf8"), {
+    URL, Promise,
+    self:{location:{origin:"https://railwatch.test"},addEventListener:(type:string,handler:(event:unknown)=>void)=>{handlers[type]=handler;},registration:{showNotification:async(title:string,options:unknown)=>{notification={title,options};}},clients:{matchAll:async()=>[],openWindow:async(url:string)=>{opened=url;}}},
+  });
+  let pending:Promise<unknown>|undefined;
+  handlers.push({data:{json:()=>({title:"RailWatch",body:"Book this journey",tag:"railwatch-journey-1",url:"https://evil.test"})},waitUntil:(value:Promise<unknown>)=>{pending=value;}});
+  await pending;expect(notification).toMatchObject({title:"RailWatch",options:{tag:"railwatch-journey-1",renotify:false,data:{url:"/journeys"}}});
+  handlers.notificationclick({notification:{close:()=>{}},waitUntil:(value:Promise<unknown>)=>{pending=value;}});
+  await pending;expect(opened).toBe("https://railwatch.test/journeys");
+});
