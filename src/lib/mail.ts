@@ -14,7 +14,8 @@ async function send(to: string, subject: string, text: string) {
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
   });
-  await transporter.sendMail({ from: config.emailFrom, to, subject, text });
+  const result = await transporter.sendMail({ from: config.emailFrom, to, subject, text });
+  if (!result.accepted?.some(address => String(address).toLowerCase() === to.toLowerCase())) throw new Error("SMTP did not accept the recipient.");
   return { sent: true as const };
 }
 

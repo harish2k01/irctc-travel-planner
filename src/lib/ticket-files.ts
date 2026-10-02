@@ -1,3 +1,4 @@
+import { ticketPdfText } from "./ticket-pdf-text";
 import { attachmentSchema, type TicketAttachment } from "./travel-planner";
 import { parseTicketDetails, type TicketDetails } from "./ticket-details";
 
@@ -24,8 +25,7 @@ export async function extractTicketFile(file: File): Promise<{ details: TicketDe
     try {
       for (let number = 1; number <= Math.min(document.numPages, 10); number++) {
         const page = await document.getPage(number); const content = await page.getTextContent();
-        let previousY: number | undefined;
-        for (const item of content.items) if ("str" in item) { const y = item.transform[5]; if (previousY !== undefined && Math.abs(y - previousY) > 3) text += "\n"; text += `${item.str}${item.hasEOL ? "\n" : " "}`; previousY = y; }
+        text+=ticketPdfText(content.items.filter(item=>"str" in item));
         text += "\n";
         if (number <= 3 && !qr) {
           const base = page.getViewport({ scale: 1 }); const scale = Math.min(2, 1800 / base.width, 2500 / base.height);

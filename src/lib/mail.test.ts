@@ -30,6 +30,8 @@ describe("email transport", () => {
     expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("/set-password?token=test-token&type=reset") }));
   });
 
+  it("does not report a rejected recipient as success", async () => { mocks.send.mockResolvedValue({accepted:[],rejected:["user@example.invalid"]}); await expect(sendTestEmail("user@example.invalid")).rejects.toThrow(/did not accept/); });
+
   it("propagates SMTP failure", async () => {
     mocks.send.mockRejectedValue(new Error("SMTP unavailable"));
     await expect(sendTestEmail("user@example.invalid")).rejects.toThrow("SMTP unavailable");
