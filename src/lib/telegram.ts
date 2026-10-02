@@ -5,8 +5,8 @@ import { prisma } from "./db";
 import { decryptSecret, encryptSecret } from "./crypto";
 import { getProviderConfiguration, resolveProviderConfiguration, telegramConfigured, type TelegramConfiguration } from "./provider-config";
 import { enforceRateLimit } from "./rate-limit";
-export const tokenHash=(token:string)=>createHash("sha256").update(token).digest("hex");
-export const telegramChatHash=(providerId:string,chatId:string)=>tokenHash(`${providerId}:${chatId}`);
+export const /** Hashes one-time Telegram credentials before storage. */ tokenHash=(token:string)=>createHash("sha256").update(token).digest("hex");
+export const /** Hashes a Telegram chat identifier without persisting its raw value. */ telegramChatHash=(providerId:string,chatId:string)=>tokenHash(`${providerId}:${chatId}`);
 /** Makes a bounded Telegram Bot API request without logging bot tokens or raw messages. */
 export async function telegramRequest<T>(token:string,method:"getMe"|"deleteWebhook"|"getUpdates"|"sendMessage",body:object={}):Promise<T>{
  let response:Response;try{response=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:"POST",redirect:"error",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});}catch{throw new ApiError(502,"Telegram could not be reached. Try again.","TELEGRAM_UNAVAILABLE");}

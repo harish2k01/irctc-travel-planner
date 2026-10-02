@@ -201,7 +201,7 @@ export function findBreaks(planner: Planner, today: string): Break[] {
   const result: Break[] = [];
   const holidayMap = new Map<string, Holiday[]>();
   for (const h of planner.holidays) holidayMap.set(h.date, [...(holidayMap.get(h.date) ?? []), h]);
-  const off = (d: string) => planner.settings.weekendDays.includes(weekday(d)) || holidayMap.has(d);
+  const /** Checks whether a date is covered by the configured time off. */ off = (d: string) => planner.settings.weekendDays.includes(weekday(d)) || holidayMap.has(d);
   const horizon = addDays(today, 365);
   for (let d = today; d <= horizon; d = addDays(d, 1)) {
     if (!off(d)) continue;
@@ -247,12 +247,12 @@ export function reminderPreview(journey: Journey, times: Planner["settings"]["re
 }
 /** Exports journey, booking, and time-off events as an iCalendar document. */
 export function calendarFile(planner: Planner) {
-  const escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
-  const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const /** Escapes special characters in iCalendar text. */ escape = (s: string) => s.replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  const /** Formats a calendar date and time for export. */ stamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const events: string[] = []; const now = stamp(new Date());
   for (const j of planner.journeys.filter(j => !j.archivedAt && !["skipped", "cancelled", "completed"].includes(j.status))) {
     const description = escape(`${j.from} → ${j.to}. ${j.train || "Train not selected"}. ${j.status.replaceAll("_", " ")}. ${j.notes}`);
-    const event = (kind: string, title: string, start: Date, end: Date, alarms: string[] = []) => events.push(["BEGIN:VEVENT", `UID:${escape(j.id)}-${kind}@railwatch.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${description}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, ...alarms, "END:VEVENT"].join("\r\n"));
+    const /** Builds an iCalendar event from its typed properties. */ event = (kind: string, title: string, start: Date, end: Date, alarms: string[] = []) => events.push(["BEGIN:VEVENT", `UID:${escape(j.id)}-${kind}@railwatch.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${description}`, `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`, ...alarms, "END:VEVENT"].join("\r\n"));
     const title = `${j.status === "cancellation_needed" ? "Cancel ticket: " : "Train: "}${j.from} → ${j.to}`;
     if (j.departureConfirmed) {
       const departure = new Date(`${j.date}T${j.departure}:00+05:30`);
@@ -267,6 +267,6 @@ export function calendarFile(planner: Planner) {
   }
   for (const h of planner.holidays) events.push(["BEGIN:VEVENT", `UID:${escape(h.id)}@railwatch.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(h.name)}`, `DTSTART;VALUE=DATE:${h.date.replaceAll("-", "")}`, `DTEND;VALUE=DATE:${addDays(h.date, 1).replaceAll("-", "")}`, "END:VEVENT"].join("\r\n"));
   // Fold UTF-8 lines at 75 octets as required by iCalendar.
-  const fold = (line: string) => { let out = ""; let size = 0; for (const c of line) { const length = new TextEncoder().encode(c).length; if (size + length > 75) { out += "\r\n "; size = 1; } out += c; size += length; } return out; };
+  const /** Folds calendar export lines to the iCalendar byte limit. */ fold = (line: string) => { let out = ""; let size = 0; for (const c of line) { const length = new TextEncoder().encode(c).length; if (size + length > 75) { out += "\r\n "; size = 1; } out += c; size += length; } return out; };
   return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//RailWatch//Travel planner//EN", "CALSCALE:GREGORIAN", ...events, "END:VCALENDAR", ""].join("\r\n").split("\r\n").map(fold).join("\r\n");
 }

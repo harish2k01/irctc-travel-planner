@@ -22,7 +22,7 @@ async function proxy(request: Request) {
     return new Response(response.body, { status: response.status, headers: outgoing });
   } catch(error) {
     logger.error("frontend.backend_unavailable",{requestId,method:request.method,path,errorType:error instanceof Error?error.name:"UnknownError"});
-    return Response.json({ error: { code: "BACKEND_UNAVAILABLE", message: "RailWatch is temporarily unavailable. Try again shortly." } }, { status: 503 });
+    return Response.json({ error: { code: "BACKEND_UNAVAILABLE", message: "RailWatch is temporarily unavailable. Try again shortly." } }, { status: 503,headers:{"x-request-id":requestId} });
   }finally{if(!path.startsWith("/api/health/")||status>=400)logger.info("frontend.api_request",{requestId,method:request.method,path,status,durationMs:Math.round(performance.now()-started)});}
 }
 export { proxy as GET, proxy as POST, proxy as PUT, proxy as PATCH, proxy as DELETE, proxy as HEAD, proxy as OPTIONS };

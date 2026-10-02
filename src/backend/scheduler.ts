@@ -26,7 +26,7 @@ export function startScheduler() {
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let active: Promise<void> | undefined;
-  const tick = async () => {
+  const /** Refreshes time-dependent state or runs the next scheduled processing cycle. */ tick = async () => {
     try { await runScheduledWork(pool); }
     catch(error) { logger.error("scheduler.failed", { errorType:error instanceof Error?error.name:"UnknownError", message: "Scheduled processing failed; retrying next minute." }); }
     if (!stopped) timer = setTimeout(() => { active = tick(); }, 60_000 - Date.now() % 60_000);

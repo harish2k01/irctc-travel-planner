@@ -11,7 +11,7 @@ export function ActionMenu({ label, actions, disabled = false }: { label: string
   useEffect(() => {
     if (!open) return;
     root.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
-    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const /** Dismisses the menu when a pointer event occurs outside it. */ outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);

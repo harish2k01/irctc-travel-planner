@@ -57,7 +57,7 @@ if (process.env.NODE_ENV !== "test") {
   logger.info("backend.started",{port:Number(process.env.BACKEND_PORT??3001),scheduler:process.env.SCHEDULER_ENABLED!=="false"});
   const stopScheduler = process.env.SCHEDULER_ENABLED === "false" ? async () => {} : startScheduler();
   let stopping = false;
-  const stop = async () => { if (stopping) return; stopping = true; await server.close(); await stopScheduler(); await prisma.$disconnect(); };
+  const /** Stops the scheduler and closes the backend gracefully. */ stop = async () => { if (stopping) return; stopping = true; await server.close(); await stopScheduler(); await prisma.$disconnect(); };
   process.once("SIGTERM", () => void stop());
   process.once("SIGINT", () => void stop());
 }

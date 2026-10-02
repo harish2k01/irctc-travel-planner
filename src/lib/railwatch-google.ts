@@ -13,7 +13,7 @@ export function googleRedirect(){return new URL("/api/railwatch/google/callback"
 /** Builds deterministic calendar events for travel, booking dates, and time off. */
 export function googleEvents(planner:Planner){
   const events:{id:string;summary:string;description:string;start:{date?:string;dateTime?:string;timeZone?:string};end:{date?:string;dateTime?:string;timeZone?:string};reminders:{useDefault:false;overrides:{method:"popup";minutes:number}[]}}[]=[];
-  const id=(key:string)=>createHash("sha256").update(key).digest("hex");
+  const /** Builds a stable provider event identifier for idempotent synchronization. */ id=(key:string)=>createHash("sha256").update(key).digest("hex");
   for(const j of planner.journeys){if(j.archivedAt||["skipped","cancelled","completed"].includes(j.status))continue;
     const summary=`${j.status==="cancellation_needed"?"Cancel ticket":"Train"}: ${j.from} → ${j.to}`;
     const dateTime=`${j.date}T${j.departure}:00+05:30`;

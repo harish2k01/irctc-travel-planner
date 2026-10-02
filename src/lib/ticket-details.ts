@@ -8,14 +8,14 @@ export function parseTicketDetails(raw: string): TicketDetails {
   try { const value = JSON.parse(raw); if (value && typeof value === "object" && !Array.isArray(value)) json = value; } catch { /* A QR may contain plain ticket text. */ }
   if (json) {
     const normalized: Record<string, unknown> = {};
-    const normalizeKey=(key:string)=>key.toLowerCase().replace(/[^a-z0-9]/g,"");
+    const /** Normalizes ticket field labels for matching across ticket formats. */ normalizeKey=(key:string)=>key.toLowerCase().replace(/[^a-z0-9]/g,"");
         /** Collects supported ticket fields from nested QR objects and the first passenger record. */
     function flatten(value:Record<string,unknown>,depth=0){if(depth>8)return;for(const [key,item] of Object.entries(value)){if(typeof item === "string"||typeof item === "number")normalized[normalizeKey(key)]=item;else if(item&&typeof item==="object"&&!Array.isArray(item))flatten(item as Record<string,unknown>,depth+1);else if(Array.isArray(item)&&item[0]&&typeof item[0]==="object")flatten(item[0] as Record<string,unknown>,depth+1);}}
     flatten(json);
     const aliases: Record<keyof TicketDetails, string[]> = { from: ["from", "source", "boardingStation"], to: ["to", "destination"], date: ["date", "journeyDate", "travelDate"], trainNumber: ["trainNumber", "trainNo", "train_no"], trainName: ["trainName", "train_name"], travelClass: ["travelClass", "class"], pnr: ["pnr", "PNR", "pnrNumber", "pnrNo"], coach: ["coach", "coachNumber", "coachNo"], seat: ["seat", "seatNumber", "seatNo", "berthNumber", "berthNo"], berth: ["berth", "berthType"], departure: ["departure", "departureTime", "scheduledDeparture", "boardingTime"] };
     for (const [key, keys] of Object.entries(aliases)) { const value = keys.map(k => normalized[normalizeKey(k)]).find(v => typeof v === "string" || typeof v === "number"); if (value !== undefined) (details as Record<string, string>)[key] = String(value).trim(); }
   } else {
-    const match = (pattern: RegExp) => text.match(pattern)?.[1]?.trim();
+    const /** Returns the first matching ticket field from the parsed text. */ match = (pattern: RegExp) => text.match(pattern)?.[1]?.trim();
     details.pnr = match(/\bPNR(?:\s*(?:No\.?|Number))?\s*[:#\-]?\s*(\d{10})\b/i);
     details.trainNumber = match(/\bTrain\s*(?:No\.?|Number)(?:\s*\/\s*Name)?\s*[:#\-]?\s*(\d{5})\b/i);
     details.trainName = match(/\bTrain\s*Name\s*[:\-]\s*([^\n]+)/i) ?? match(/\bTrain\s*(?:No\.?|Number)\s*\/\s*Name\s*[:\-]?\s*\d{5}\s*\/\s*([^\n]+)/i);

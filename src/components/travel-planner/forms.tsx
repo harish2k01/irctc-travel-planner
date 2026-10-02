@@ -46,7 +46,7 @@ export function RuleForm({ rule, planner, today, save, fail,remindersEnabled=tru
   const frequency = preset === "custom" ? unit : preset.startsWith("monthly") ? "monthly" : preset;
     /** Validates the active form and submits its account-scoped changes. */
   function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault(); const form = new FormData(e.currentTarget); const str = (key: string) => String(form.get(key) ?? "");
+    e.preventDefault(); const form = new FormData(e.currentTarget); const /** Reads a form field as a string. */ str = (key: string) => String(form.get(key) ?? "");
     const selected = form.getAll("weekdays").map(Number);
     const interval = preset === "custom" ? Number(form.get("interval")) : 1;
     const result = ruleSchema.safeParse({ ...rule, id: rule?.id ?? crypto.randomUUID(), name: str("name"), from: str("from"), to: str("to"), start, end: str("end") || null, weekdays: frequency === "weekly" ? selected : [weekday(start)], intervalWeeks: Math.min(interval, 12), recurrence: { frequency, interval, monthlyPattern: str("monthlyPattern") || "date", dayOfMonth: Number(form.get("dayOfMonth") ?? start.slice(-2)), ordinal: Number(form.get("ordinal") ?? Math.ceil(Number(start.slice(-2)) / 7)), weekday: Number(form.get("monthlyWeekday") ?? weekday(start)) }, timePreference: "any", departure: "20:00", train: "", travelClass: "", windowDays: planner.settings.bookingWindowDays, originOffset: 0, returnAfterDays: null, returnDeparture: "20:00", returnTrain: "", returnOriginOffset: 0, linkedRuleId: str("linkedRuleId") || undefined, excludedDates: [], paused: rule?.paused ?? false, reminderOverride: remindersEnabled ? remindersFromForm(form) : rule?.reminderOverride });
@@ -109,7 +109,7 @@ export function JourneyForm({ journey, date, planner, today, save, fail, ticket 
   }
     /** Validates the active form and submits its account-scoped changes. */
   async function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault(); if (busy) return; const form = new FormData(e.currentTarget); const str = (key: string) => String(form.get(key) ?? "").trim();
+    e.preventDefault(); if (busy) return; const form = new FormData(e.currentTarget); const /** Reads a form field as a string. */ str = (key: string) => String(form.get(key) ?? "").trim();
     if (str("from").toLowerCase() === str("to").toLowerCase()) { fail("Choose different departure and arrival stations."); return; }
     const details = showTicket ? { trainName: str("trainName"), trainNumber: str("trainNumber"), train: str("trainName").slice(0, 80), travelClass: str("travelClass"), pnr: str("pnr"), coach: str("coach"), seat: str("seat"), berth: str("berth"), departure: str("departure") || "20:00", departureConfirmed: Boolean(str("departure")) } : { train: journey?.train ?? "", travelClass: journey?.travelClass ?? "", pnr: journey?.pnr ?? "", departure: journey?.departure ?? "20:00" };
     const result = journeySchema.safeParse({ ...journey, ...details, id: journey?.id ?? crypto.randomUUID(), from: str("from"), to: str("to"), date: str("date"), timePreference: "any", windowDays: planner.settings.bookingWindowDays, originOffset: 0, bookingDateOverride: undefined, status, notes: str("notes"), attachments: files, reminderOverride: (remindersEnabled ? remindersFromForm(form) : journey?.reminderOverride), manualOverride: journey?.ruleId ? true : journey?.manualOverride });

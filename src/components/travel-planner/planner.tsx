@@ -37,14 +37,14 @@ function shortId(value: string) { let hash = 0; for (const char of value) hash =
 export function TravelPlanner({ account }: { account: AccountWorkspace & UserProfile }) {
   const router=useRouter(),pathname=usePathname();const policy=account.policy;
   const tab=(Object.keys(PATHS) as Tab[]).find(key=>PATHS[key]===pathname)??"home";
-  const setTab=(tab:Tab)=>router.push(PATHS[tab]);
+  const /** Navigates to the selected workspace page. */ setTab=(tab:Tab)=>router.push(PATHS[tab]);
   const navItems=NAV.filter(n=>n.id!=="settings"||account.role==="ADMIN");
   const activeNav=tab==="users"||tab==="integrations"?"settings":tab;
   const saveLock=useRef(false); const [displayName,setDisplayName]=useState(account.name);
   const [remote,setRemote]=useState(JSON.stringify(account.planner)); const [revision,setRevision]=useState(account.revision); const [saving,setSaving]=useState(false);
   const raw=remote;
   const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => { const tick = () => setNow(new Date()); const timer = setInterval(tick, 30000); const initial = setTimeout(tick, 0); return () => { clearInterval(timer); clearTimeout(initial); }; }, []);
+  useEffect(() => { const /** Refreshes time-dependent state or runs the next scheduled processing cycle. */ tick = () => setNow(new Date()); const timer = setInterval(tick, 30000); const initial = setTimeout(tick, 0); return () => { clearInterval(timer); clearTimeout(initial); }; }, []);
   const today = now ? todayIST(now) : "";
   const loaded = useMemo(() => read(raw), [raw]);
   const planner = useMemo(() => today && !loaded.invalid ? reconcileJourneyLifecycle(extendRoutines(loaded.planner, today),today) : loaded.planner, [loaded, today]);
@@ -67,7 +67,7 @@ export function TravelPlanner({ account }: { account: AccountWorkspace & UserPro
   const gridStart = firstDay ? addDays(firstDay, -((weekday(firstDay) - planner.settings.weekStartsOn + 7) % 7)) : "";
   const activeDay = day || today;
   const dayEvents = editor?.type === "day" ? eventsFor(editor.date) : {journeys:[],bookings:[],holidays:[]};
-  const ruleName = (j: Journey) => planner.rules.find(r => r.id === j.ruleId)?.name;
+  const /** Resolves a routine identifier to its display name. */ ruleName = (j: Journey) => planner.rules.find(r => r.id === j.ruleId)?.name;
     /** Saves edits with the current concurrency revision and preserves unsaved work on conflicts. */
   async function commit(next: Planner, message: string, restore = false) {
     if (saveLock.current) return false;
