@@ -1,6 +1,6 @@
-# Railplan deployment
+# RailWatch deployment
 
-Railplan is the application at `/railplan`. Sign up or sign in at `/`. Plans and ticket files are stored in PostgreSQL, encrypted with the application key. This repository uses a fresh initial schema; install it against a new empty database. The old app and browser prototype have been removed.
+RailWatch is the application at `/railplan`. Sign up or sign in at `/`. Plans and ticket files are stored in PostgreSQL, encrypted with the application key. This repository uses a fresh initial schema; install it against a new empty database. The old app and browser prototype have been removed.
 
 ## Local run
 
@@ -33,7 +33,7 @@ After restarting the app, each user adds an international phone number and enabl
 
 ## Google Calendar
 
-Configure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Register the exact HTTPS redirect URI `<publicUrl>/api/railplan/google/callback` in your Google OAuth application and configure consent/test users or publishing as appropriate. Each user connects in Settings. The app creates a dedicated Railplan calendar using the `calendar.app.created` scope and synchronizes journeys, booking events, and company/personal holidays. Pausing sync retains existing calendar events. Credentials are encrypted. Live OAuth and provider behavior require testing after setup.
+Configure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Register the exact HTTPS redirect URI `<publicUrl>/api/railplan/google/callback` in your Google OAuth application and configure consent/test users or publishing as appropriate. Each user connects in Settings. The app creates a dedicated RailWatch calendar using the `calendar.app.created` scope and synchronizes journeys, booking events, and company/personal holidays. Pausing sync retains existing calendar events. Credentials are encrypted. Live OAuth and provider behavior require testing after setup.
 
 ## Validation
 

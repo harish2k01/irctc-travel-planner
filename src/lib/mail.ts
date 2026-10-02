@@ -20,8 +20,8 @@ async function send(to: string, subject: string, text: string) {
 
 export function sendInvitationEmail(email: string, token: string) {
   const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=invitation`;
-  return send(email, "Set up your Railplan account", [
-    "An administrator created an Railplan account for you.",
+  return send(email, "Set up your RailWatch account", [
+    "An administrator created a RailWatch account for you.",
     "",
     `Set your password using this one-time link: ${url}`,
     "",
@@ -31,7 +31,7 @@ export function sendInvitationEmail(email: string, token: string) {
 
 export function sendPasswordResetEmail(email: string, token: string) {
   const url = `${appUrl()}/set-password?token=${encodeURIComponent(token)}&type=reset`;
-  return send(email, "Reset your Railplan password", [
+  return send(email, "Reset your RailWatch password", [
     "A password reset was requested for your account.",
     "",
     `Choose a new password using this one-time link: ${url}`,
@@ -40,4 +40,4 @@ export function sendPasswordResetEmail(email: string, token: string) {
   ].join("\n"));
 }
 
-export function sendTestEmail(email:string){return send(email,"Railplan email test","Email delivery is working for your Railplan account.");}
+export function sendTestEmail(email:string){return send(email,"RailWatch email test","Email delivery is working for your RailWatch account.");}

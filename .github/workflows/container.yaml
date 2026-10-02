@@ -1,4 +1,4 @@
-name: Publish released Railplan
+name: Publish released RailWatch
 on:
   workflow_call:
     inputs:
@@ -64,7 +64,7 @@ jobs:
           sbom: true
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.title=Railplan
+            org.opencontainers.image.title=RailWatch
             org.opencontainers.image.version=${{ inputs.tag }}
             org.opencontainers.image.revision=${{ inputs.sha }}
       - name: Promote semantic aliases and record immutable image

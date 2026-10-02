@@ -1,4 +1,4 @@
-# Railplan
+# RailWatch
 
 A self-hosted train travel planner with configurable recurring journeys, booking reminders, a Kanban board, calendar, company holidays and personal leave, and private PDF/QR ticket storage.
 
