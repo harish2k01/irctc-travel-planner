@@ -115,3 +115,15 @@
 @media(max-width:600px){.viewTabs{flex-wrap:wrap;gap:6px}.viewTabs button{padding:8px 10px;font-size:12px;min-height:42px}.columnBody{scrollbar-gutter:auto}}
 .holidayLayout>section,.holidayOpportunities{min-width:0}.holidayOpportunities .routineGrid{max-width:100%}
 @media(max-width:900px){.holidayLayout{grid-template-columns:minmax(0,1fr)}}
+
+.sidebarInstall{margin-top:auto;padding:18px 14px;border-top:1px solid var(--line)}.mobileStatusFilter{display:none}.modal:not(.wideModal){width:min(680px,calc(100vw - 32px))}
+@media(max-width:600px){.sidebarInstall{display:none}.mobileStatusFilter{display:block}.notificationPanel{position:fixed;top:calc(68px + env(safe-area-inset-top));left:12px;right:12px;width:auto;max-height:calc(100dvh - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom))}.modal:not(.wideModal){width:calc(100vw - 16px)}}
+
+@media(min-width:601px){.columnBody{max-height:none;overflow-y:visible}}
+
+.modal,.profileDrawer{overflow-x:hidden;overscroll-behavior:contain}.field{min-width:0}.field input,.field textarea{min-width:0;max-width:100%;box-sizing:border-box}.field input[type=date],.field input[type=time]{width:100%;min-inline-size:0}
+@media(max-width:600px){.modalHead{padding-top:16px}.profileDrawer{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}}
+
+.sidebarInstall button{width:100%;white-space:normal;overflow-wrap:anywhere;font-size:12px}
+
+@media(max-width:600px){.desktopFilterReset{display:none}}

@@ -28,7 +28,7 @@ The operational items above require evidence in the current installation. A succ
 
 ## Decisions that superseded the original design
 
-Dashboard and Kanban replaced the proposed Today/Trips table. Holidays & Leave remains a separate page. Telegram is the chosen first external reminder channel; Discord is not an outstanding requirement. Week start and booking-window controls are shared administrator settings. Routine horizon defaults to six months. Browser push and automatic ticket booking remain outside scope.
+Dashboard and Kanban replaced the proposed Today/Trips table. Holidays & Leave remains a separate page. Telegram is the chosen first external reminder channel; Discord is not an outstanding requirement. Week start and booking-window controls are shared administrator settings. Routine horizon defaults to six months. Browser push is opt-in per device and uses outgoing-only scheduled delivery. Automatic ticket booking remains outside scope.
 
 PNR providers, offline ticket access and Tatkal-specific planning were optional follow-up ideas, not blockers for the planning/reminder core. PDF import, originally optional, is now implemented. Google Calendar and WhatsApp adapters exist, but their external setup and actual live delivery must be verified when they are enabled.
 
@@ -43,3 +43,5 @@ No interactive prototype route, demo workspace seed or browser-persisted prototy
 When SMTP is configured, users request a 24-hour verification link under Profile and explicitly confirm it before opting into Email Reminders under Connections. Signup and first-administrator bootstrap remain usable without SMTP. The upgrade clears earlier verification timestamps, which could have been stamped by temporary-password or invitation setup. Existing accounts must confirm ownership before opting in; login and saved plans are unaffected. Email changes revoke unused account tokens and clear verification; the scheduler rechecks the current verified address and preference before delivery. Emailed password-reset tokens prove ownership. Invitations can be shared manually by administrators, so invitation links and administrator-issued temporary passwords do not mark an email verified.
 
 SMTP booking reminders use the same schedule, durable leases, retries and notification failure reporting as the other channels. Removing SMTP pauses queued email delivery without consuming retries. Email addresses and message bodies are not logged.
+
+Device push now includes encrypted subscriptions, persistent VAPID identity, device ownership/quota checks, expired endpoint removal and stable notification tags. Physical Android/iPhone delivery and status-bar acceptance remains required; see mobile-pwa.md.

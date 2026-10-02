@@ -12,7 +12,7 @@ An ordinary bookmark opens in a browser tab. Home-screen installation is the opt
 
 ## Offline and update behavior
 
-Only `/offline.html`, a public reconnect screen, is stored by the service worker. Account HTML, API responses, login credentials and PDF tickets are not added to Cache Storage. Navigation goes to the network first, so deployments do not require an old application shell to expire. Private tickets remain on the server and need connectivity; browser push is not introduced by this change. On worker updates, old RailWatch offline-document caches are removed and the worker is revalidated without HTTP caching.
+Only `/offline.html`, a public reconnect screen, is stored by the service worker. Account HTML, API responses, login credentials and PDF tickets are not added to Cache Storage. Navigation goes to the network first, so deployments do not require an old application shell to expire. Private tickets remain on the server and need connectivity; push subscriptions are stored encrypted in PostgreSQL. On worker updates, old RailWatch offline-document caches are removed and the worker is revalidated without HTTP caching.
 
 ## Device acceptance after deployment
 
@@ -25,3 +25,15 @@ Responsive Chrome checks at 320, 390, 768 and 1482 pixels cover both themes. The
 5. Deploy an update and relaunch; verify fresh application assets and private-account separation after sign-out/sign-in.
 
 References: [Next.js PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps), [MDN installation guide](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Installing), [MDN install prompt](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/How_to/Trigger_install_prompt).
+
+## Device notifications
+
+Enable in User Settings > Connections > Device Notifications, then send a test. Permission is requested only from that explicit button. Desktop browsers and Android support web push; iOS/iPadOS 16.4+ requires installing on the home screen and opening that installation before enabling. Delivery depends on OS permissions, connectivity and browser push service availability; it is not guaranteed at an exact instant.
+
+The backend creates one encrypted, persistent VAPID identity in PostgreSQL, shared across replicas. Preserve the database and APP_ENCRYPTION_KEY on restores. All delivery is outgoing HTTPS to the browser push service; no incoming webhook or public callback is needed. The app origin still needs HTTPS and must be reachable for login and subscription changes. Backend egress must allow supported Google, Mozilla, Apple or Windows push services on TCP 443. Unsupported endpoints are rejected.
+
+Each device is independently registered (maximum ten per account). Disable removes only that device. Switching accounts cannot overwrite the original owner subscription. Scheduled jobs recheck active account, journey, reminder policy and subscription before sending. Existing scheduler leases and retries handle transient failures; HTTP 404/410 removes expired devices. Failures appear in the notification inbox. Stable journey tags replace visible notifications for the same journey; ambiguous network failures may still cause transport retries.
+
+Physical acceptance: allow and send a test on desktop Chrome, Android installed Chrome and installed iPhone Safari; close the app and verify a scheduled reminder; disable and confirm no further push; revoke OS permission and check the UI. iOS status-bar metadata changes may require closing/reopening or reinstalling an existing home-screen app. Check the top area in dark mode and that dialogs have one vertical scroll surface with no horizontal scrolling.
+
+Platform reference: https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/

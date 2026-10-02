@@ -33,6 +33,7 @@ model User {
   sessions          Session[]
   accountTokens     AccountToken[]
   auditEvents       AuditLog[]     @relation("AuditActor")
+  railPush          RailPush[]
   railWorkspace     RailWorkspace?
   railFiles         RailFile[]
   railJobs          RailJob[]
@@ -188,4 +189,21 @@ model RailGoogle {
   leaseUntil DateTime?
   updatedAt  DateTime  @updatedAt
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Instance-wide VAPID identity; private key encrypted with APP_ENCRYPTION_KEY.
+model RailPushConfig {
+  id String @id
+  publicKey String
+  privateKey String
+}
+// One browser/device subscription per account; endpoint and browser keys encrypted.
+model RailPush {
+  id String @id @default(cuid())
+  userId String
+  endpointHash String @unique
+  subscription String
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
 }

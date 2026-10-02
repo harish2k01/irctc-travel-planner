@@ -29,3 +29,13 @@ Operational backlog (reminder recovery, pagination, monitoring and restore rehea
 ## Verification result
 
 Implemented on feat/mobile-pwa-ux. This checklist records code delivery, not a production deployment. Automated checks cover every main route in light/dark at 320, 390, 768 and 1482 pixels, four visible mobile destinations, More navigation, status switching, settings tab fit, agenda, guarded journey edits and the PWA offline cache. Physical-device acceptance remains in mobile-pwa.md.
+
+## Follow-up from physical iPhone review
+
+- Move Install RailWatch to the bottom of desktop navigation and mobile More; remove the header link.
+- Remove the duplicate Appearance setting and requested board/routine explanations.
+- Keep Journey Status filtering mobile-only; make desktop summaries compact while editing keeps the wide layout.
+- Constrain notification panel and date/time inputs to the phone viewport.
+- Lock background page scrolling for dialogs and remove nested desktop board scroll surfaces.
+- Use an opaque black iOS standalone status bar, theme-aware document/browser backgrounds, and safe-area spacing. Verify on an existing and fresh iPhone installation after deployment.
+- Add opt-in outgoing browser/PWA push with test and disable controls; verify actual desktop, Android and installed iPhone delivery after deployment.

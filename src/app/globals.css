@@ -96,3 +96,8 @@ main article,
     transition-duration: 1ms !important;
   }
 }
+
+/* A dialog owns the only scroll surface while open; preserve the page position. */
+html:has(dialog[open]), body:has(dialog[open]) { overflow: hidden; }
+html:has([data-theme="dark"]), body:has([data-theme="dark"]) { background: #1c222a; color-scheme: dark; }
+html:has([data-theme="light"]), body:has([data-theme="light"]) { background: #fff; color-scheme: light; }
