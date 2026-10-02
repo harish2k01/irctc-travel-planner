@@ -4,7 +4,7 @@ import { cp } from "node:fs/promises";
 
 const port = process.env.E2E_PORT ?? "3102";
 const baseURL = `http://127.0.0.1:${port}`;
-const env = { ...process.env, E2E_URL: baseURL, NEXT_PUBLIC_APP_URL: baseURL, HOSTNAME: "127.0.0.1", PORT: port };
+const env = { ...process.env, E2E_URL: baseURL, APP_URL: baseURL, HOSTNAME: "127.0.0.1", PORT: port };
 await cp(".next/static", ".next/standalone/.next/static", { recursive: true });
 await cp("public", ".next/standalone/public", { recursive: true });
 const server = spawn(process.execPath, [".next/standalone/server.js"], { env, stdio: "inherit" });
@@ -18,7 +18,7 @@ try {
     await delay(1000);
   }
   if (!ready) throw new Error("Production server did not become ready.");
-  for (const script of ["scripts/verify-railplan.mjs"]) {
+  for (const script of ["scripts/verify-railplan.mjs","scripts/verify-railwatch-accounts.mjs"]) {
     const test = spawn(process.execPath, [script], { env, stdio: "inherit" });
     code = await new Promise((resolve) => { test.once("error", () => resolve(1)); test.once("exit", (value) => resolve(value ?? 1)); });
     if (code) break;

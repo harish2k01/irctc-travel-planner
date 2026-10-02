@@ -9,7 +9,7 @@ import { hashPassword } from "@/lib/passwords";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getAppSettings } from "@/lib/settings";
 
-const schema = z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email(), password: passwordSchema });
+const schema = z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().max(254), password: passwordSchema });
 
 export async function POST(request: Request) {
   try {
