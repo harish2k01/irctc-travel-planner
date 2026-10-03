@@ -15,6 +15,11 @@ Reviewed against merged main on 2 October 2026. This is a current implementation
 
 ## Remaining from the original plan
 
+Subtle interface motion is implemented for page headings, dialogs, menus, drawers,
+new list items and control feedback. Motion never delays actions, does not replace
+Kanban drag transforms, and is disabled for the system reduced-motion preference.
+Further motion should follow the same accessibility and responsiveness constraints.
+
 | Area | Current limitation and next work |
 | --- | --- |
 | Reminder recovery | Jobs have leases, retries and eligibility checks. Schedules more than 24 hours old are excluded; add explicit missed-reminder/outage handling and an operator retry view. |

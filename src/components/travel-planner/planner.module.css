@@ -132,3 +132,21 @@
 .pageHead>div:first-child{margin-right:auto}.pageHead{justify-content:flex-start;gap:12px}.pdfPages{display:grid;gap:20px}.pdfPages canvas{display:block;background:white}.scheduleRows{display:grid;gap:10px}.scheduleRow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end}.scheduleRow button{min-height:42px}.scheduleRows input{width:100%;min-width:0}.scheduleRows small{display:block;color:var(--muted)}
 
 .ticketViewport{overflow:auto;max-height:60dvh}.ticketViewer nav{position:sticky;top:0;background:var(--panel);z-index:1}
+
+/* Motion stays brief, never delays interaction, and leaves drag transforms alone. */
+@keyframes surfaceEnter{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes itemEnter{from{opacity:0}to{opacity:1}}
+@keyframes drawerEnter{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:translateX(0)}}
+@media(prefers-reduced-motion:no-preference){
+ .pageHead{animation:surfaceEnter 180ms ease-out}
+ .modal[open],.notificationPanel,.profileMenu,.moreMenu,.actionMenu>div,.selectOptions{animation:surfaceEnter 160ms ease-out}
+ .modal[open]::backdrop{animation:itemEnter 140ms ease-out}
+ .profileDrawer{animation:drawerEnter 180ms ease-out}
+ .app main .card,.app main .routineCard,.app main .vaultCard,.attentionList>*,.holidayRow,.leaveGroup,.notificationPanel article,.scheduleRow{animation:itemEnter 160ms ease-out}
+ .toast:popover-open{animation:surfaceEnter 180ms ease-out}
+ .app button,.modal button,.navItem,.navActive,.metricCard,.card,.routineCard,.vaultCard{transition:background-color 140ms ease,border-color 140ms ease,box-shadow 140ms ease,color 140ms ease}
+}
+/* Also cover older transitions when the user requests reduced motion. */
+@media(prefers-reduced-motion:reduce){
+ .app *,.app *::before,.app *::after,.modal,.modal *,.modal::backdrop,.toast,.profileDrawer,.profileDrawer *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
