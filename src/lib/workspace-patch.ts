@@ -36,7 +36,7 @@ export async function saveNormalizedPatch(userId:string,input:Planner,revision:n
     for(const id of changed){const j=after.get(id);if(!j){await tx.railJourney.deleteMany({where:{userId,id}});continue;}const data=journeyRow(userId,j);await tx.railJourney.upsert({where:{userId_id:{userId,id}},create:data,update:data});if(j.attachments?.length)await tx.railFile.updateMany({where:{userId,id:{in:j.attachments.map(f=>f.id)}},data:{journeyId:id}});}
     if(!sameContent(latest.settings.quietHours,planner.settings.quietHours))await tx.railJob.updateMany({where:{userId,state:"PENDING",deferredUntil:{not:null}},data:{dueAt:new Date()}});
     const metadata={...planner,journeys:[]},metaChanged=!sameContent({...latest,journeys:[]},metadata),payload=metaChanged?workspacePayload(metadata,2):row.payload;
-    const saved=await tx.railWorkspace.update({where:{userId},data:{version:{increment:1},listVersion:row.version+1,listDay:sameContent(latest.rules,planner.rules)?todayIST():"",...(metaChanged?{payload,listPayload:payload}:{})}});
+    const saved=await tx.railWorkspace.update({where:{userId},data:{version:{increment:1},listVersion:row.version+1,listDay:sameContent(latest.rules,planner.rules)?row.listDay:"",...(metaChanged?{payload,listPayload:payload}:{})}});
     return {planner,revision:saved.version,partial:true};
   },{timeout:60000});
 }
