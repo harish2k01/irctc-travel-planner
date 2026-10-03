@@ -13,6 +13,25 @@ try{
   await page.goto(url+'/');await expect(page.getByRole('heading',{name:'Hello, Admin'})).toBeVisible();
   for(const [name,path]of [['My Journeys','/journeys'],['Calendar','/calendar'],['Routines','/routines'],['Holidays & Leave','/holidays'],['Ticket Vault','/tickets'],['Admin Settings','/admin'],['Integrations','/admin/integrations'],['User Management','/admin/users']]){await page.getByRole('link',{name,exact:true}).click();await expect(page).toHaveURL(url+path);await page.reload();await expect(page.getByRole('link',{name,exact:true})).toHaveAttribute('aria-current','page');}
   await page.goBack();await expect(page).toHaveURL(url+'/admin/integrations');await page.goForward();await expect(page).toHaveURL(url+'/admin/users');
+  assert.equal((await api(visitor,'/api/admin/operations')).status(),401);
+  assert.equal((await api(regular,'/api/admin/operations')).status(),403);
+  assert.equal((await api(regular,'/api/admin/operations','post',{id:'missing'})).status(),403);
+  assert.equal((await api(visitor,'/api/health/metrics')).status(),401);
+  const metrics=await visitor.request.get(url+'/api/health/metrics',{headers:{Authorization:'Bearer '+process.env.CRON_SECRET}});
+  assert.equal(metrics.status(),200);assert.ok((await metrics.text()).includes('railwatch_scheduler_last_success_timestamp_seconds'));
+  assert.equal((await page.request.post(url+'/api/admin/operations',{headers:{Origin:'https://foreign.invalid'},data:{id:'missing'}})).status(),403);
+  const deliveryDb=new pg.Client({connectionString:process.env.DATABASE_URL});await deliveryDb.connect();
+  const deliveryOwner=(await read(admin,'/api/railwatch/profile')).id;
+  for(let n=0;n<26;n++)await deliveryDb.query('INSERT INTO "RailJob" (id,"userId",key,kind,"dueAt",state,"updatedAt") VALUES ($1,$2,$1,$3,now(),$4,now())',['recovery-'+String(n).padStart(2,'0'),deliveryOwner,'IN_APP','MISSED']);
+  const firstRecovery=await read(admin,'/api/admin/operations');assert.equal(firstRecovery.jobs.length,25);assert.ok(firstRecovery.nextCursor);
+  const secondRecovery=await read(admin,'/api/admin/operations?cursor='+firstRecovery.nextCursor);assert.equal(secondRecovery.jobs.length,1);
+  assert.equal(JSON.stringify(firstRecovery).includes('payload'),false);
+  await page.goto(url+'/admin/operations');await expect(page.getByRole('heading',{name:'Reminder Delivery & Recovery'})).toBeVisible();
+  await page.getByRole('button',{name:'Next page',exact:true}).click();await expect(page.getByRole('button',{name:'First page',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'First page',exact:true}).click();await expect(page.getByRole('button',{name:'Next page',exact:true})).toBeVisible();
+  await page.screenshot({path:'build/railwatch-qa/reminder-recovery.png',fullPage:true,animations:'disabled'});
+  await deliveryDb.query('DELETE FROM "RailJob" WHERE "userId"=$1 AND id LIKE $2',[deliveryOwner,'recovery-%']);await deliveryDb.end();
+  await page.goto(url+'/admin/users');
   await page.getByRole('main').getByLabel('Username',{exact:true}).fill('Invited Traveler');const inviteEmail=`invite-${randomUUID()}@example.invalid`;await page.getByRole('main').getByLabel('Email',{exact:true}).fill(inviteEmail);await page.getByRole('button',{name:'Invite User',exact:true}).click();const link=page.getByLabel('Invitation Link');await expect(link).toBeVisible();const invitation=new URL(await link.inputValue());assert.equal(invitation.origin,url);
   await page.screenshot({path:'build/railwatch-qa/admin-users.png',fullPage:true,animations:'disabled'});
   const token=invitation.searchParams.get('token');assert.equal((await api(invited,'/api/auth/reset-password','post',{token,type:'invitation',password})).status(),200);assert.equal((await api(invited,'/api/auth/reset-password','post',{token,type:'invitation',password})).status(),400);let inviteUser=await read(invited,'/api/railwatch/profile');assert.equal(inviteUser.role,'USER');assert.equal(inviteUser.emailVerified,false);assert.equal((await read(invited,'/api/railwatch/workspace')).planner.journeys.length,0);

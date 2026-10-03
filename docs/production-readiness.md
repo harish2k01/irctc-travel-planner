@@ -22,12 +22,12 @@ Further motion should follow the same accessibility and responsiveness constrain
 
 | Area | Current limitation and next work |
 | --- | --- |
-| Reminder recovery | Jobs have leases, retries and eligibility checks. Schedules more than 24 hours old are excluded; add explicit missed-reminder/outage handling and an operator retry view. |
+| Reminder recovery | Recent outage misses are recorded and visible; administrators can queue audited, eligibility-checked retries. Broader recovery retention/policies remain future work. See reminder-operations.md. |
 | Notification control | The header inbox has read/dismiss and failure states. A paginated notification history, snooze, quiet hours and detailed per-journey delivery timeline remain absent. |
 | Large accounts | The API reads/saves an encrypted whole workspace and the browser filters it. Server pagination/search, accurate paginated aggregates and realistic account-scale performance tests remain. |
 | Calendar and planning | CSV holiday import, ICS export and a month agenda exist. ICS holiday import, broader overflow accessibility and actionable duplicate/overlap/leave-conflict suggestions remain. |
 | Editing and navigation | Journey summaries and guarded item editors exist. Linkable individual journey URLs and unsaved-change protection for account/admin settings remain. |
-| Production operations | Logs and readiness checks exist. Queue/heartbeat/backup-age metrics and alerts, agreed latency/lateness targets, an off-cluster restore rehearsal, rollback rehearsal and broader accessibility/visual-regression validation remain gates. |
+| Production operations | Queue/heartbeat metrics, administrator warnings and alert-rule templates exist. Monitoring scrape/receiver verification, backup-age metrics, agreed latency/lateness targets, off-cluster restore and rollback rehearsals, and broader accessibility/visual-regression validation remain gates. |
 
 The operational items above require evidence in the current installation. A successful build or unit test is not proof of backup recoverability or provider delivery.
 

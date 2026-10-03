@@ -16,7 +16,8 @@ describe("account planner policies",()=>{
     expect(reminderJobs(planner,now)).toHaveLength(3);
     expect(new Set(reminderJobs({...planner,settings:{...planner.settings,whatsappEnabled:true,whatsappNumber:"+919876543210"}},now).map(j=>j.key)).size).toBe(6);
     for(const patch of [{status:"booked" as const},{archivedAt:"2026-10-01"},{reminderOverride:{mode:"off" as const,times:[],clock:planner.settings.reminderClock}}])expect(reminderJobs({...planner,journeys:[{...j,...patch}]},now)).toEqual([]);
-    expect(reminderJobs(planner,new Date("2026-10-04T00:00:00Z"))).toEqual([]);
+    expect(reminderJobs(planner,new Date("2026-10-04T00:00:00Z"))).toHaveLength(3);
+    expect(reminderJobs(planner,new Date("2026-11-03T00:00:00Z"))).toEqual([]);
   });
   it("exports Google events with stable ids, effective alarms and no PNR",()=>{
     const planner={...EMPTY_PLANNER,journeys:[j]};const events=googleEvents(planner);expect(events).toHaveLength(2);expect(events[0].start).toEqual({date:j.date});expect(events[1].reminders.overrides).toHaveLength(3);expect(JSON.stringify(events)).not.toContain(j.pnr);
