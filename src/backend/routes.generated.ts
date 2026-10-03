@@ -21,13 +21,14 @@ import * as r18 from "./routes/railwatch/connections/route";
 import * as r19 from "./routes/railwatch/files/[id]/route";
 import * as r20 from "./routes/railwatch/google/callback/route";
 import * as r21 from "./routes/railwatch/google/connect/route";
-import * as r22 from "./routes/railwatch/notifications/route";
-import * as r23 from "./routes/railwatch/profile/route";
-import * as r24 from "./routes/railwatch/push/route";
-import * as r25 from "./routes/railwatch/telegram/callback/route";
-import * as r26 from "./routes/railwatch/telegram/route";
-import * as r27 from "./routes/railwatch/workspace/route";
-import * as r28 from "./routes/version/route";
+import * as r22 from "./routes/railwatch/journeys/route";
+import * as r23 from "./routes/railwatch/notifications/route";
+import * as r24 from "./routes/railwatch/profile/route";
+import * as r25 from "./routes/railwatch/push/route";
+import * as r26 from "./routes/railwatch/telegram/callback/route";
+import * as r27 from "./routes/railwatch/telegram/route";
+import * as r28 from "./routes/railwatch/workspace/route";
+import * as r29 from "./routes/version/route";
 type Handler = (request: Request, context: {params: Promise<Record<string,string>>}) => Response | Promise<Response>;
 export const routes = [
 { method: "GET" as const, path: "/api/admin/operations", handler: r0.GET as Handler },
@@ -60,15 +61,16 @@ export const routes = [
 { method: "DELETE" as const, path: "/api/railwatch/files/:id", handler: r19.DELETE as Handler },
 { method: "GET" as const, path: "/api/railwatch/google/callback", handler: r20.GET as Handler },
 { method: "POST" as const, path: "/api/railwatch/google/connect", handler: r21.POST as Handler },
-{ method: "GET" as const, path: "/api/railwatch/notifications", handler: r22.GET as Handler },
-{ method: "POST" as const, path: "/api/railwatch/notifications", handler: r22.POST as Handler },
-{ method: "GET" as const, path: "/api/railwatch/profile", handler: r23.GET as Handler },
-{ method: "PATCH" as const, path: "/api/railwatch/profile", handler: r23.PATCH as Handler },
-{ method: "GET" as const, path: "/api/railwatch/push", handler: r24.GET as Handler },
-{ method: "POST" as const, path: "/api/railwatch/push", handler: r24.POST as Handler },
-{ method: "GET" as const, path: "/api/railwatch/telegram/callback", handler: r25.GET as Handler },
-{ method: "POST" as const, path: "/api/railwatch/telegram", handler: r26.POST as Handler },
-{ method: "GET" as const, path: "/api/railwatch/workspace", handler: r27.GET as Handler },
-{ method: "PUT" as const, path: "/api/railwatch/workspace", handler: r27.PUT as Handler },
-{ method: "GET" as const, path: "/api/version", handler: r28.GET as Handler }
+{ method: "GET" as const, path: "/api/railwatch/journeys", handler: r22.GET as Handler },
+{ method: "GET" as const, path: "/api/railwatch/notifications", handler: r23.GET as Handler },
+{ method: "POST" as const, path: "/api/railwatch/notifications", handler: r23.POST as Handler },
+{ method: "GET" as const, path: "/api/railwatch/profile", handler: r24.GET as Handler },
+{ method: "PATCH" as const, path: "/api/railwatch/profile", handler: r24.PATCH as Handler },
+{ method: "GET" as const, path: "/api/railwatch/push", handler: r25.GET as Handler },
+{ method: "POST" as const, path: "/api/railwatch/push", handler: r25.POST as Handler },
+{ method: "GET" as const, path: "/api/railwatch/telegram/callback", handler: r26.GET as Handler },
+{ method: "POST" as const, path: "/api/railwatch/telegram", handler: r27.POST as Handler },
+{ method: "GET" as const, path: "/api/railwatch/workspace", handler: r28.GET as Handler },
+{ method: "PUT" as const, path: "/api/railwatch/workspace", handler: r28.PUT as Handler },
+{ method: "GET" as const, path: "/api/version", handler: r29.GET as Handler }
 ];

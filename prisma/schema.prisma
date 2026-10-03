@@ -36,6 +36,7 @@ model User {
   railPush          RailPush[]
   railWorkspace     RailWorkspace?
   railFiles         RailFile[]
+  railJourneys      RailJourney[]
   railJobs          RailJob[]
   railReminderPauses RailReminderPause[]
   railGoogle        RailGoogle?
@@ -135,6 +136,9 @@ model RailTelegram {
 }
 
 model RailWorkspace {
+  listVersion Int @default(0)
+  listPayload String @default("")
+  listDay String @default("")
   userId    String   @id
   version   Int      @default(1)
   payload   String
@@ -231,4 +235,25 @@ model RailPush {
   createdAt DateTime @default(now())
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
+}
+
+// Encrypted list records with account-scoped, opaque search tokens.
+model RailJourney {
+  userId String
+  id String
+  date String
+  bookingDate String
+  bookingAt DateTime
+  status String
+  archived Boolean
+  ruleId String?
+  hasTicket Boolean
+  fingerprint String
+  searchTokens String[]
+  payload String
+  user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+  @@id([userId,id])
+  @@index([userId,archived,status,date,id])
+  @@index([userId,bookingAt,id])
+  @@index([searchTokens],type:Gin)
 }

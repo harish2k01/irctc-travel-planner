@@ -1,3 +1,4 @@
+import { readJourneyPages,journeyQuerySchema } from "./journey-pages";
 import { setJourneySnooze } from "./notification-controls";
 import {createAccountToken,consumeAccountToken} from "./account-tokens";
 import { dismissInAppReminder,recordInAppReminder } from "./in-app-notifications";
@@ -25,6 +26,28 @@ const users:string[]=[];
 async function fixture(){if(!new URL(process.env.DATABASE_URL!).pathname.endsWith("_test"))throw new Error("Use an isolated test database.");await prisma.appSettings.upsert({where:{id:"global"},create:{id:"global"},update:{bookingWindowDays:60,remindersEnabled:true,whatsappEnabled:true}});const u=await prisma.user.create({data:{email:`${randomUUID()}@railwatch.invalid`}});users.push(u.id);return {user:u,...await loadWorkspace(u.id)};}
 afterEach(async()=>{vi.useRealTimers();if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
 describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",{timeout:15000},()=>{
+  it("indexes 2,000 encrypted journeys, pages accurately and preserves unloaded records during edits",async()=>{
+    const f=await fixture(),other=await fixture(),today=todayIST();
+    const journeys:Journey[]=Array.from({length:2000},(_,i)=>({id:`scale-${String(i).padStart(4,"0")}`,from:"MDU",to:"MS",date:addDays(today,90+i%180),departure:"20:00",train:"Express",pnr:"",travelClass:"SL",windowDays:60,originOffset:0,status:i%5===0?"booked":"needs_booking",notes:`needle-${i}`}));
+    journeys[1997]={...journeys[1997],status:"completed",date:addDays(today,-20)};journeys[1998]={...journeys[1998],status:"cancelled",date:addDays(today,-20),archivedAt:addDays(today,-10),cancelledAt:addDays(today,-20)};
+    const start=Date.now();const saved=await saveWorkspace(f.user.id,{...f.planner,journeys,settings:{...f.planner.settings,bookingSchedule:[],cancellationEnabled:false}},f.revision);const indexMs=Date.now()-start;
+    const query=journeyQuerySchema.parse({});const began=Date.now();const first=await readJourneyPages(f.user.id,query);const pageMs=Date.now()-began;
+    expect(first.pages.needs_booking.total).toBe(1598);expect(first.pages.booked.total).toBe(400);expect(first.pages.needs_booking.items).toHaveLength(30);expect(first.totals).toMatchObject({board:1998,completed:1,archive:1,ready:0,booked:400});
+    const next=await readJourneyPages(f.user.id,{...query,column:"needs_booking",cursor:first.pages.needs_booking.nextCursor!});const ids=[...first.pages.needs_booking.items,...next.pages.needs_booking.items].map(j=>j.id);expect(new Set(ids).size).toBe(60);
+    const expected=saved.planner.journeys.filter(j=>j.status==="needs_booking").sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id)).slice(0,60).map(j=>j.id);expect(ids).toEqual(expected);
+    const search=await readJourneyPages(f.user.id,journeyQuerySchema.parse({q:"needle-1901"}));expect(search.pages.needs_booking.total).toBe(1);expect(search.pages.needs_booking.items[0].id).toBe("scale-1901");
+    const substring=await readJourneyPages(f.user.id,journeyQuerySchema.parse({q:"MDU"}));expect(substring.pages.booked.total).toBe(400);
+    await expect(readJourneyPages(other.user.id,{...query,column:"needs_booking",cursor:first.pages.needs_booking.nextCursor!})).rejects.toThrow("Filters changed");
+    const base={...saved.planner,journeys:first.pages.needs_booking.items};const outside=await prisma.railJourney.findUniqueOrThrow({where:{userId_id:{userId:f.user.id,id:"scale-1999"}}});
+    const edited={...base,journeys:base.journeys.map((j,i)=>i?j:{...j,notes:"Edited from a loaded page"})};const partial=await saveWorkspace(f.user.id,edited,saved.revision,base,true);
+    expect(partial.planner.journeys).toHaveLength(30);expect(await prisma.railJourney.count({where:{userId:f.user.id}})).toBe(2000);expect((await loadWorkspace(f.user.id)).planner.journeys).toHaveLength(2000);
+    expect((await prisma.railJourney.findUniqueOrThrow({where:{userId_id:{userId:f.user.id,id:"scale-1999"}}})).payload).toBe(outside.payload);
+    await expect(readJourneyPages(f.user.id,{...query,column:"needs_booking",cursor:first.pages.needs_booking.nextCursor!})).rejects.toThrow("journeys changed");
+    await expect(saveWorkspace(f.user.id,{...base,journeys:base.journeys.map((j,i)=>i?j:{...j,notes:"Conflicting update"})},saved.revision,base,true)).rejects.toThrow("item changed");
+    const bytes=Buffer.byteLength(JSON.stringify(first));expect(bytes).toBeLessThan(Buffer.byteLength(JSON.stringify(saved.planner))/5);
+    expect(outside.payload.startsWith("enc:v1:")).toBe(true);expect(outside.searchTokens.join(" ")).not.toContain("needle");
+    process.stdout.write("Account-scale verification "+JSON.stringify({journeys:2000,indexMs,pageMs,responseBytes:bytes,workspaceBytes:Buffer.byteLength(JSON.stringify(saved.planner))})+"\n");
+  },60000);
   it("defers external messages during quiet hours while retaining the in-app inbox",async()=>{
     pushDelivery.mockClear();const now=new Date(`${todayIST()}T04:00:00Z`);vi.useFakeTimers({toFake:["Date"]});vi.setSystemTime(now);const f=await fixture();
     const journey:Journey={id:"quiet",from:"A",to:"B",date:addDays(todayIST(now),60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
