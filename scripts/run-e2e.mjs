@@ -2,9 +2,13 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { cp } from "node:fs/promises";
 
+if(process.env.RUN_E2E!=="1"||!process.env.DATABASE_URL||!new URL(process.env.DATABASE_URL).pathname.endsWith("_test")||!["localhost","127.0.0.1"].includes(new URL(process.env.DATABASE_URL).hostname))throw new Error("Use an explicitly enabled, isolated local test database.");
+
 const port = process.env.E2E_PORT ?? "3102";
 const baseURL = `http://127.0.0.1:${port}`;
 const env = { ...process.env, E2E_URL: baseURL, APP_URL: baseURL, HOSTNAME: "127.0.0.1", PORT: port };
+// Exercise the upgraded format only against the explicitly isolated browser-test database.
+env.RAILWATCH_NORMALIZED_STORAGE = "true";
 env.BACKEND_URL = `http://127.0.0.1:${Number(port) + 1}`;
 const backend = spawn(process.execPath, ["build/backend/server.mjs"], { env: { ...env, NODE_ENV: "production", BACKEND_PORT: String(Number(port) + 1), SCHEDULER_ENABLED: "false" }, stdio: "inherit" });
 await cp(".next/static", ".next/standalone/.next/static", { recursive: true });

@@ -1,8 +1,9 @@
+import {reminderJourneyId} from "@/lib/in-app-notifications";
+import {storedPlanner} from "@/lib/workspace-storage";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptSecret } from "@/lib/crypto";
-import { decodeWorkspace } from "@/lib/railwatch-store";
 import { todayIST } from "@/lib/travel-planner";
 import { dismissInAppReminder } from "@/lib/in-app-notifications";
 import { setJourneySnooze } from "@/lib/notification-controls";
@@ -19,7 +20,7 @@ export async function GET(request:Request){try{
   const rows=await prisma.railJob.findMany({where:{userId:user.id,state:{in:["SENT","SUPPRESSED","CANCELLED","FAILED","MISSED"]}},orderBy:[{createdAt:"desc"},{id:"desc"}],take:26,...(cursor?{cursor:{id:cursor},skip:1}:{})});
   const now=new Date();
   const [workspace,pauses]=await Promise.all([prisma.railWorkspace.findUnique({where:{userId:user.id}}),prisma.railReminderPause.findMany({where:{userId:user.id,until:{gt:now}}})]);
-  const journeys=workspace?decodeWorkspace(workspace.payload).journeys:[];
+  const journeys=workspace?(await storedPlanner(prisma,user.id,workspace,[...pauses.map(p=>p.journeyId),...rows.map(j=>reminderJourneyId(j.payload)).filter((id):id is string=>Boolean(id))])).journeys:[];
   const items=rows.slice(0,25).map(job=>{
     const details=JSON.parse(decryptSecret(job.payload)??"{}");
     const journey=journeys.find(j=>j.id===details.journeyId);

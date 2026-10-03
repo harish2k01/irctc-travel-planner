@@ -24,4 +24,4 @@ Routines and other workspace screens bootstrap settings/rules/holidays without d
 
 The 2,000-journey database fixture verifies dashboard counts, bounded previews, calendar counts, distinct batches, tenant isolation and stale calendar cursors. Browser checks include a 210-journey crowded day and retention of a booked routine occurrence through pause/removal.
 
-Canonical writes, bootstrap reconciliation and scheduler planning still process the encrypted workspace. Narrower storage writes and scheduler scaling remain the next account-scale phase; this change does not claim to remove every whole-workspace operation.
+The next storage phase supports encrypted account metadata plus independently encrypted journey rows. Conversion is opt-in after every backend replica has upgraded; legacy accounts remain supported. Converted partial edits write only changed rows, and settings-only saves preserve journey ciphertext. Scheduler sweeps use a persisted cursor, 20 accounts per pass and 200 journey rows per planning read. See [workspace-storage.md](workspace-storage.md) for migration, activation, rollback and remaining full-account operations.

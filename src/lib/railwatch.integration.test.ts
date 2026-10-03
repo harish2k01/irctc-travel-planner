@@ -1,4 +1,6 @@
 import { readJourneyPages,journeyQuerySchema } from "./journey-pages";
+import {materializeLegacyWorkspace} from "./workspace-storage";
+import {nextAccountBatch,ACCOUNT_BATCH_SIZE} from "./reminder-planning";
 import {readPlanningView,type CalendarView,type DashboardView} from "./planning-views";
 import { setJourneySnooze } from "./notification-controls";
 import {createAccountToken,consumeAccountToken} from "./account-tokens";
@@ -12,7 +14,7 @@ import { decryptSecret } from "./crypto";
 import { randomUUID } from "node:crypto";
 import { describe,it,expect,afterEach,vi } from "vitest";
 import { prisma } from "./db";
-import { loadWorkspace,saveWorkspace } from "./railwatch-store";
+import { loadWorkspace,loadWorkspaceMetadata,saveWorkspace } from "./railwatch-store";
 import { encryptSecret } from "./crypto";
 import { processRailWatch } from "./railwatch-jobs";
 import { retryReminder } from "./reminder-operations";
@@ -25,9 +27,10 @@ const pushDelivery=vi.hoisted(()=>vi.fn().mockResolvedValue(undefined));
 vi.mock("./browser-push",()=>({sendBrowserPush:pushDelivery}));
 const users:string[]=[];
 async function fixture(){if(!new URL(process.env.DATABASE_URL!).pathname.endsWith("_test"))throw new Error("Use an isolated test database.");await prisma.appSettings.upsert({where:{id:"global"},create:{id:"global"},update:{bookingWindowDays:60,remindersEnabled:true,whatsappEnabled:true}});const u=await prisma.user.create({data:{email:`${randomUUID()}@railwatch.invalid`}});users.push(u.id);return {user:u,...await loadWorkspace(u.id)};}
-afterEach(async()=>{vi.useRealTimers();if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
+afterEach(async()=>{vi.useRealTimers();vi.unstubAllEnvs();if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
 describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",{timeout:15000},()=>{
   it("indexes 2,000 encrypted journeys, pages accurately and preserves unloaded records during edits",async()=>{
+    vi.stubEnv("RAILWATCH_NORMALIZED_STORAGE","true");
     const f=await fixture(),other=await fixture(),today=todayIST();
     const journeys:Journey[]=Array.from({length:2000},(_,i)=>({id:`scale-${String(i).padStart(4,"0")}`,from:"MDU",to:"MS",date:addDays(today,90+i%180),departure:"20:00",train:"Express",pnr:"",travelClass:"SL",windowDays:60,originOffset:0,status:i%5===0?"booked":"needs_booking",notes:`needle-${i}`}));
     journeys[1997]={...journeys[1997],status:"completed",date:addDays(today,-20)};journeys[1998]={...journeys[1998],status:"cancelled",date:addDays(today,-20),archivedAt:addDays(today,-10),cancelledAt:addDays(today,-20)};
@@ -51,15 +54,57 @@ describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",{time
     await expect(readPlanningView(other.user.id,{...calendarQuery,cursor:calendar.nextCursor!})).rejects.toThrow("range changed");
     await expect(readPlanningView(f.user.id,{...calendarQuery,to:addDays(today,132)})).rejects.toThrow("six weeks");
     const base={...saved.planner,journeys:first.pages.needs_booking.items};const outside=await prisma.railJourney.findUniqueOrThrow({where:{userId_id:{userId:f.user.id,id:"scale-1999"}}});
+    const metadataBefore=await prisma.railWorkspace.findUniqueOrThrow({where:{userId:f.user.id}});expect(metadataBefore.storageVersion).toBe(2);expect(JSON.parse(decryptSecret(metadataBefore.payload)!).journeys).toHaveLength(0);
     const edited={...base,journeys:base.journeys.map((j,i)=>i?j:{...j,notes:"Edited from a loaded page"})};const partial=await saveWorkspace(f.user.id,edited,saved.revision,base,true);
     expect(partial.planner.journeys).toHaveLength(30);expect(await prisma.railJourney.count({where:{userId:f.user.id}})).toBe(2000);expect((await loadWorkspace(f.user.id)).planner.journeys).toHaveLength(2000);
     expect((await prisma.railJourney.findUniqueOrThrow({where:{userId_id:{userId:f.user.id,id:"scale-1999"}}})).payload).toBe(outside.payload);
+    expect((await prisma.railWorkspace.findUniqueOrThrow({where:{userId:f.user.id}})).payload).toBe(metadataBefore.payload);
     await expect(readJourneyPages(f.user.id,{...query,column:"needs_booking",cursor:first.pages.needs_booking.nextCursor!})).rejects.toThrow("journeys changed");
     await expect(readPlanningView(f.user.id,{...calendarQuery,cursor:calendar.nextCursor!})).rejects.toThrow("journeys changed");
     await expect(saveWorkspace(f.user.id,{...base,journeys:base.journeys.map((j,i)=>i?j:{...j,notes:"Conflicting update"})},saved.revision,base,true)).rejects.toThrow("item changed");
     const bytes=Buffer.byteLength(JSON.stringify(first));expect(bytes).toBeLessThan(Buffer.byteLength(JSON.stringify(saved.planner))/5);
     expect(outside.payload.startsWith("enc:v1:")).toBe(true);expect(outside.searchTokens.join(" ")).not.toContain("needle");
+    const themeBase=await loadWorkspace(f.user.id);const beforeTheme=await prisma.railJourney.findMany({where:{userId:f.user.id},orderBy:{id:"asc"},select:{payload:true}});
+    await saveWorkspace(f.user.id,{...themeBase.planner,journeys:[],settings:{...themeBase.planner.settings,theme:"dark"}},themeBase.revision,{...themeBase.planner,journeys:[]},true);
+    expect(await prisma.railJourney.findMany({where:{userId:f.user.id},orderBy:{id:"asc"},select:{payload:true}})).toEqual(beforeTheme);
+    vi.stubEnv("RAILWATCH_NORMALIZED_STORAGE","false");await prisma.$transaction(tx=>materializeLegacyWorkspace(tx,f.user.id),{timeout:60000});
+    const legacy=await prisma.railWorkspace.findUniqueOrThrow({where:{userId:f.user.id}});expect(legacy.storageVersion).toBe(1);expect(JSON.parse(decryptSecret(legacy.payload)!).journeys).toHaveLength(2000);expect((await loadWorkspace(f.user.id)).planner.settings.theme).toBe("dark");
     process.stdout.write("Account-scale verification "+JSON.stringify({journeys:2000,indexMs,pageMs,responseBytes:bytes,workspaceBytes:Buffer.byteLength(JSON.stringify(saved.planner))})+"\n");
+  },60000);
+  it("converts legacy accounts lazily without losing linked PDFs or changing the content revision",async()=>{
+    const f=await fixture(),date=addDays(todayIST(),90),file={id:randomUUID(),name:"original.pdf",type:"application/pdf" as const,size:5,createdAt:new Date().toISOString()};
+    await prisma.railFile.create({data:{id:file.id,userId:f.user.id,name:file.name,type:file.type,size:file.size,payload:encryptSecret("JVBERi0=")}});
+    const saved=await saveWorkspace(f.user.id,{...f.planner,journeys:[{id:"legacy-ticket",from:"A",to:"B",date,departure:"20:00",train:"",pnr:"1234567890",travelClass:"",windowDays:60,originOffset:0,status:"booked",notes:"Keep this",attachments:[file]}]},f.revision);
+    expect((await prisma.railWorkspace.findUniqueOrThrow({where:{userId:f.user.id}})).storageVersion).toBe(1);
+    vi.stubEnv("RAILWATCH_NORMALIZED_STORAGE","true");const metadata=await loadWorkspaceMetadata(f.user.id);expect(metadata.revision).toBe(saved.revision);expect(metadata.planner.journeys).toHaveLength(0);
+    const row=await prisma.railWorkspace.findUniqueOrThrow({where:{userId:f.user.id}});expect(row.storageVersion).toBe(2);expect(JSON.parse(decryptSecret(row.payload)!).journeys).toHaveLength(0);
+    expect((await loadWorkspace(f.user.id)).planner.journeys).toEqual(saved.planner.journeys);expect((await prisma.railFile.findUniqueOrThrow({where:{userId_id:{userId:f.user.id,id:file.id}}})).journeyId).toBe("legacy-ticket");
+    vi.stubEnv("RAILWATCH_NORMALIZED_STORAGE","false");expect((await loadWorkspace(f.user.id)).planner.journeys).toEqual(saved.planner.journeys);
+  });
+  it("plans normalized journey batches and updates device jobs without a content revision",async()=>{
+    vi.stubEnv("RAILWATCH_NORMALIZED_STORAGE","true");const f=await fixture(),now=new Date(`${todayIST()}T09:00:00+05:30`);
+    const journeys:Journey[]=Array.from({length:205},(_,i)=>({id:`scheduled-${String(i).padStart(3,"0")}`,from:"A",to:"B",date:addDays(todayIST(now),i<2?60:61),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""}));
+    const saved=await saveWorkspace(f.user.id,{...f.planner,journeys,settings:{...f.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}]}},f.revision);
+    await processRailWatch(now);expect(await prisma.railJob.count({where:{userId:f.user.id,state:"SENT"}})).toBe(2);expect(await prisma.railJob.count({where:{userId:f.user.id,state:"PENDING"}})).toBe(203);
+    await processRailWatch(now);expect(await prisma.railJob.count({where:{userId:f.user.id,state:"SENT"}})).toBe(2);
+    const device=await prisma.railPush.create({data:{userId:f.user.id,endpointHash:randomUUID(),subscription:encryptSecret("{}")}});await processRailWatch(now);
+    expect(await prisma.railJob.count({where:{userId:f.user.id,kind:"PUSH",state:"PENDING"}})).toBe(203);
+    const before=await prisma.railWorkspace.findUniqueOrThrow({where:{userId:f.user.id}});expect(before.version).toBe(saved.revision);
+    await prisma.railPush.delete({where:{id:device.id}});await processRailWatch(now);
+    expect(await prisma.railJob.count({where:{userId:f.user.id,kind:"PUSH",state:"PENDING"}})).toBe(0);expect(await prisma.railJob.count({where:{userId:f.user.id,kind:"PUSH",state:"CANCELLED"}})).toBe(203);
+    const after=await prisma.railWorkspace.findUniqueOrThrow({where:{userId:f.user.id}});expect(after.version).toBe(before.version);expect(after.planGeneration).toBeGreaterThan(before.planGeneration);
+  },60000);
+  it("continues the account sweep after one account fails to reconcile",async()=>{
+    const broken=await fixture(),healthy=await fixture(),now=new Date(`${todayIST()}T09:00:00+05:30`);
+    await saveWorkspace(healthy.user.id,{...healthy.planner,journeys:[{id:"healthy-due",from:"A",to:"B",date:addDays(todayIST(now),60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""}],settings:{...healthy.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}]}},healthy.revision);
+    await prisma.railWorkspace.update({where:{userId:broken.user.id},data:{payload:encryptSecret("invalid-json"),listDay:""}});
+    await prisma.railOperations.upsert({where:{id:"scheduler"},create:{id:"scheduler",accountCursor:null},update:{accountCursor:null}});
+    const result=await processRailWatch(now);expect(result.planningFailures).toBe(1);expect(await prisma.railJob.count({where:{userId:healthy.user.id,state:"SENT"}})).toBe(1);
+  });
+  it("persists a fair account sweep across bounded batches and wraps without requiring a live cursor row",async()=>{
+    const seeded=await Promise.all(Array.from({length:ACCOUNT_BATCH_SIZE+3},()=>fixture()));
+    await prisma.railOperations.upsert({where:{id:"scheduler"},create:{id:"scheduler",accountCursor:null},update:{accountCursor:null}});
+    try{const first=await nextAccountBatch();expect(first.accounts).toHaveLength(ACCOUNT_BATCH_SIZE);expect(first.cursor).not.toBeNull();await prisma.railOperations.update({where:{id:"scheduler"},data:{accountCursor:first.cursor}});const second=await nextAccountBatch();const seen=new Set([...first.accounts,...second.accounts].map(row=>row.userId));for(const account of seeded)expect(seen.has(account.user.id)).toBe(true);expect(second.cursor).toBeNull();await prisma.railOperations.update({where:{id:"scheduler"},data:{accountCursor:"zzzz-deleted-account"}});expect((await nextAccountBatch()).accounts).toHaveLength(ACCOUNT_BATCH_SIZE);}finally{await prisma.railOperations.update({where:{id:"scheduler"},data:{accountCursor:null}});}
   },60000);
   it("defers external messages during quiet hours while retaining the in-app inbox",async()=>{
     pushDelivery.mockClear();const now=new Date(`${todayIST()}T04:00:00Z`);vi.useFakeTimers({toFake:["Date"]});vi.setSystemTime(now);const f=await fixture();
@@ -107,6 +152,7 @@ describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",{time
     const recovered=await prisma.railOperations.findUniqueOrThrow({where:{id:"scheduler"}});
     expect(recovered.succeededAt!.getTime()).toBeGreaterThanOrEqual(failed.failedAt!.getTime());
     expect(JSON.stringify(recovered)).not.toContain("private-provider-detail");
+    await runWithHeartbeat(async()=>({accounts:2,sent:1,calendars:0,planningFailures:1}));const partial=await prisma.railOperations.findUniqueOrThrow({where:{id:"scheduler"}});expect(partial.failureCount).toBe(recovered.failureCount+1);expect(partial.succeededAt).toEqual(recovered.succeededAt);
   });
   it("releases an abandoned final-attempt lease for operator review",async()=>{
     const f=await fixture(),now=new Date(`${todayIST()}T05:00:00Z`);
@@ -236,9 +282,9 @@ describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",{time
     expect((await loadWorkspace(a.user.id,new Date(addDays(today,1)+"T12:00:00+05:30"))).revision).toBe(expired.revision);
   });
   it("stores encrypted plans and rejects stale concurrent writes",async()=>{const {user,planner,revision}=await fixture();const edits=await Promise.allSettled([saveWorkspace(user.id,{...planner,settings:{...planner.settings,theme:"dark"}},revision),saveWorkspace(user.id,{...planner,settings:{...planner.settings,bookingWindowDays:45}},revision)]);expect(edits.filter(e=>e.status==="fulfilled")).toHaveLength(1);const row=await prisma.railWorkspace.findUniqueOrThrow({where:{userId:user.id}});expect(row.payload).toMatch(/^enc:v1:/);expect(row.payload).not.toContain("settings");expect(row.version).toBe(2);});
-  it("keeps routine refresh revisions stable and safely merges time off with background plans",async()=>{const f=await fixture();const today=todayIST();const rule:Rule={id:"background",name:"Weekly",from:"A",to:"B",train:"",travelClass:"",windowDays:60,originOffset:0,start:today,end:null,weekdays:[0,1,2,3,4,5,6],intervalWeeks:1,departure:"20:00",returnAfterDays:null,returnDeparture:"20:00",returnTrain:"",returnOriginOffset:0,paused:false,excludedDates:[]};await saveWorkspace(f.user.id,{...f.planner,rules:[rule]},f.revision);const extended=await loadWorkspace(f.user.id);expect((await loadWorkspace(f.user.id)).revision).toBe(extended.revision);const holiday={id:"leave",name:"Time Off",date:addDays(today,20),type:"leave" as const};const saved=await saveWorkspace(f.user.id,{...f.planner,holidays:[holiday]},f.revision,f.planner);expect(saved.planner.holidays).toContainEqual(holiday);expect(saved.planner.rules).toHaveLength(1);expect(saved.planner.journeys.length).toBeGreaterThan(0);});
+  it("keeps routine refresh revisions stable and safely merges time off with background plans",async()=>{vi.stubEnv("RAILWATCH_NORMALIZED_STORAGE","true");const f=await fixture();const today=todayIST();const rule:Rule={id:"background",name:"Weekly",from:"A",to:"B",train:"",travelClass:"",windowDays:60,originOffset:0,start:today,end:null,weekdays:[0,1,2,3,4,5,6],intervalWeeks:1,departure:"20:00",returnAfterDays:null,returnDeparture:"20:00",returnTrain:"",returnOriginOffset:0,paused:false,excludedDates:[]};await saveWorkspace(f.user.id,{...f.planner,rules:[rule]},f.revision);const extended=await loadWorkspace(f.user.id);expect((await loadWorkspace(f.user.id)).revision).toBe(extended.revision);const holiday={id:"leave",name:"Time Off",date:addDays(today,20),type:"leave" as const};const saved=await saveWorkspace(f.user.id,{...f.planner,holidays:[holiday]},f.revision,f.planner);expect(saved.planner.holidays).toContainEqual(holiday);expect(saved.planner.rules).toHaveLength(1);expect(saved.planner.journeys.length).toBeGreaterThan(0);});
   it("does not accept attachments owned by another account",async()=>{const a=await fixture(),b=await fixture();const date=todayIST();const attachment={id:"ticket",name:"ticket.pdf",type:"application/pdf" as const,size:5,createdAt:new Date().toISOString()};await prisma.railFile.create({data:{id:attachment.id,userId:a.user.id,name:attachment.name,type:attachment.type,size:5,payload:encryptSecret("JVBERi0=")}});const journey:Journey={id:"j",from:"A",to:"B",date,departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"booked",notes:"",attachments:[attachment]};await expect(saveWorkspace(b.user.id,{...EMPTY_PLANNER,journeys:[journey]},b.revision)).rejects.toThrow("Upload the original");expect((await loadWorkspace(b.user.id)).revision).toBe(1);});
-  it("extends ongoing routines without a browser and avoids duplicate reminder deliveries",async()=>{const {user,planner,revision}=await fixture();const today=todayIST();const rule:Rule={id:"routine",name:"Daily",from:"A",to:"B",start:today,end:null,weekdays:[0],intervalWeeks:1,recurrence:{frequency:"daily",interval:1,monthlyPattern:"date",dayOfMonth:1,ordinal:1,weekday:0},paused:false,excludedDates:[],departure:"20:00",returnDeparture:"20:00",returnAfterDays:null,returnTrain:"",returnOriginOffset:0,train:"",travelClass:"",originOffset:0,windowDays:60};const journey:Journey={id:"due",from:"C",to:"D",date:addDays(today,60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};await saveWorkspace(user.id,{...planner,rules:[rule],journeys:[journey]},revision);const now=new Date(`${today}T08:00:00+05:30`);await Promise.all([processRailWatch(now),processRailWatch(now)]);const loaded=await loadWorkspace(user.id);expect(loaded.planner.journeys.length).toBeGreaterThan(180);const jobs=await prisma.railJob.findMany({where:{userId:user.id,state:"SENT"}});expect(jobs.length).toBeGreaterThan(0);expect(new Set(jobs.map(j=>j.key)).size).toBe(jobs.length);await processRailWatch(now);expect(await prisma.railJob.count({where:{userId:user.id,state:"SENT"}})).toBe(jobs.length);},20000);
+  it("extends ongoing routines without a browser and avoids duplicate reminder deliveries",async()=>{vi.stubEnv("RAILWATCH_NORMALIZED_STORAGE","true");const {user,planner,revision}=await fixture();const today=todayIST();const rule:Rule={id:"routine",name:"Daily",from:"A",to:"B",start:today,end:null,weekdays:[0],intervalWeeks:1,recurrence:{frequency:"daily",interval:1,monthlyPattern:"date",dayOfMonth:1,ordinal:1,weekday:0},paused:false,excludedDates:[],departure:"20:00",returnDeparture:"20:00",returnAfterDays:null,returnTrain:"",returnOriginOffset:0,train:"",travelClass:"",originOffset:0,windowDays:60};const journey:Journey={id:"due",from:"C",to:"D",date:addDays(today,60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};await saveWorkspace(user.id,{...planner,rules:[rule],journeys:[journey]},revision);const now=new Date(`${today}T08:00:00+05:30`);await Promise.all([processRailWatch(now),processRailWatch(now)]);const loaded=await loadWorkspace(user.id);expect(loaded.planner.journeys.length).toBeGreaterThan(180);const jobs=await prisma.railJob.findMany({where:{userId:user.id,state:"SENT"}});expect(jobs.length).toBeGreaterThan(0);expect(new Set(jobs.map(j=>j.key)).size).toBe(jobs.length);await processRailWatch(now);expect(await prisma.railJob.count({where:{userId:user.id,state:"SENT"}})).toBe(jobs.length);},20000);
   it("reactivates pending reminders when a journey returns to To book",async()=>{const f=await fixture();const today=todayIST();const now=new Date(today+'T08:00:00+05:30');let current=await saveWorkspace(f.user.id,{...f.planner,journeys:[{id:"return-to-book",from:"A",to:"B",date:addDays(today,65),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""}]},f.revision);await processRailWatch(now);const pending=await prisma.railJob.count({where:{userId:f.user.id,state:"PENDING"}});expect(pending).toBeGreaterThan(0);current.planner.journeys[0].status="booked";current=await saveWorkspace(f.user.id,current.planner,current.revision);await processRailWatch(now);expect(await prisma.railJob.count({where:{userId:f.user.id,state:"CANCELLED"}})).toBe(pending);current.planner.journeys[0].status="needs_booking";await saveWorkspace(f.user.id,current.planner,current.revision);await processRailWatch(now);expect(await prisma.railJob.count({where:{userId:f.user.id,state:"PENDING"}})).toBe(pending);});
   it("applies shared booking rules and account phones, and pauses worker reminders when disabled",async()=>{
     const f=await fixture();const previous=await prisma.appSettings.findUniqueOrThrow({where:{id:"global"}});

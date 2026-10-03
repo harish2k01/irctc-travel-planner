@@ -1,3 +1,6 @@
+import {nextAccountBatch,planAccountReminders} from "./reminder-planning";
+import {storedPlanner} from "./workspace-storage";
+import {reminderJourneyId} from "./in-app-notifications";
 import { quietHoursResume } from "./notification-controls";
 import { sendBrowserPush } from "./browser-push";
 import { recordInAppReminder } from "./in-app-notifications";
@@ -7,12 +10,11 @@ import { getProviderConfiguration,telegramConfigured } from "./provider-config";
 import {telegramBookingMessage} from "./message-templates";
 import { sendTelegram } from "./telegram";
 import { createHash,randomUUID } from "node:crypto";
-import { encryptSecret } from "./crypto";
 import { prisma } from "./db";
 import { sendBookingEmail } from "./mail";
 import { getDeliveryConfiguration } from "./settings";
 import { getFeaturePolicy } from "./settings";
-import { applyAccountSettings,decodeWorkspace,loadWorkspace } from "./railwatch-store";
+import { applyAccountSettings } from "./railwatch-store";
 import { scheduledReminders,bookingTimeLabel,todayIST,formatDay,bookingDay,type Planner } from "./travel-planner";
 import { sendWhatsApp,whatsappReady } from "./railwatch-providers";
 import { syncGoogleCalendars } from "./railwatch-google";
@@ -37,22 +39,14 @@ export async function processRailWatch(now=new Date()){
   await prisma.railJob.updateMany({where:{state:"SENDING",attempts:{gte:5},leaseUntil:{lt:now}},data:{state:"FAILED",lease:null,leaseUntil:null,lastError:"Delivery was interrupted on its final automatic attempt. Review before retrying."}});
   await pollTelegram();
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
-  const workspaces=await prisma.railWorkspace.findMany({select:{userId:true,user:{select:{isActive:true,email:true,emailVerifiedAt:true}}}});
-  for(const {userId,user} of workspaces){const deviceIds=(await prisma.railPush.findMany({where:{userId},select:{id:true}})).map(d=>d.id);const {planner}=await loadWorkspace(userId,now);if(!user.isActive){await prisma.railJob.updateMany({where:{userId,state:{in:["PENDING","FAILED","MISSED"]}},data:{state:"CANCELLED",lease:null,leaseUntil:null}});continue;}const jobs=policy.remindersEnabled?reminderJobs(planner,now,user.emailVerifiedAt?user.email:undefined,deviceIds).filter(j=>(j.kind!=="WHATSAPP"||policy.whatsappEnabled)&&(j.kind!=="TELEGRAM"||policy.telegramEnabled)):[];
-    await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;const current=await tx.railWorkspace.findUniqueOrThrow({where:{userId}});const owner=await tx.user.findUniqueOrThrow({where:{id:userId}});const effective=applyAccountSettings(decodeWorkspace(current.payload),policy,owner.phoneNumber??"",await tx.railTelegram.findUnique({where:{userId}}),telegramProviderId);const actual=policy.remindersEnabled?reminderJobs(effective,now,owner.emailVerifiedAt?owner.email:undefined,deviceIds).filter(j=>(j.kind!=="WHATSAPP"||policy.whatsappEnabled)&&(j.kind!=="TELEGRAM"||policy.telegramEnabled)):[];
-      await tx.railReminderPause.deleteMany({where:{userId,until:{lte:now}}});
-      await tx.railJob.updateMany({where:{userId,state:{in:["PENDING","FAILED","MISSED"]},key:{notIn:actual.map(j=>j.key)}},data:{state:"CANCELLED",lease:null,leaseUntil:null}});
-      await tx.railJob.updateMany({where:{userId,state:"CANCELLED",key:{in:actual.map(j=>j.key)}},data:{state:"PENDING",attempts:0,lastError:null,lease:null,leaseUntil:null,retryRequestedAt:null,deferredUntil:null}});
-      const missedKeys=actual.filter(j=>j.dueAt.getTime()<now.getTime()-86400000).map(j=>j.key);
-      await tx.railJob.updateMany({where:{userId,state:{in:["PENDING","FAILED"]},retryRequestedAt:null,deferredUntil:null,key:{in:missedKeys}},data:{state:"MISSED",lease:null,leaseUntil:null,lastError:"The scheduled time passed before this reminder could be delivered."}});
-      await tx.railJob.createMany({data:jobs.filter(j=>actual.some(a=>a.key===j.key)).map(({key,kind,dueAt,message,journeyId})=>({userId,key,kind,dueAt,state:missedKeys.includes(key)?"MISSED":"PENDING",payload:encryptSecret(JSON.stringify({message,journeyId,reminderType:message.startsWith("Cancel your ticket")?"cancellation":"booking"}))})),skipDuplicates:true});
-    });
-  }
+  const batch=await nextAccountBatch();let planningFailures=0;
+  for(const {userId} of batch.accounts){try{await planAccountReminders(userId,policy,telegramProviderId,now,reminderJobs);}catch(error){planningFailures++;logger.error("scheduler.account_failed",{accountId:userId,errorType:error instanceof Error?error.name:"UnknownError"});}}
+  await prisma.railOperations.upsert({where:{id:"scheduler"},create:{id:"scheduler",accountCursor:batch.cursor},update:{accountCursor:batch.cursor}});
   const available={dueAt:{lte:now},attempts:{lt:5},OR:[{state:"PENDING"},{state:"FAILED"},{state:"SENDING",leaseUntil:{lt:now}}]};
   const jobs=await prisma.railJob.findMany({where:available,orderBy:{dueAt:"asc"},take:100});let sent=0;
   for(const job of jobs){const lease=randomUUID();const claim=await prisma.railJob.updateMany({where:{id:job.id,...available},data:{state:"SENDING",lease,leaseUntil:new Date(Math.max(Date.now(),now.getTime())+120000),attempts:{increment:1}}});if(!claim.count)continue;
     try{
-      const currentPolicy=await getFeaturePolicy();const currentConfig=await getProviderConfiguration();const workspace=await prisma.railWorkspace.findUnique({where:{userId:job.userId},include:{user:{select:{isActive:true,phoneNumber:true,email:true,emailVerifiedAt:true}}}});const planner=workspace?applyAccountSettings(decodeWorkspace(workspace.payload),currentPolicy,workspace.user.phoneNumber??"",await prisma.railTelegram.findUnique({where:{userId:job.userId}}),telegramConfigured(currentConfig)?currentConfig.telegram!.id:undefined):undefined;
+      const currentPolicy=await getFeaturePolicy();const currentConfig=await getProviderConfiguration();const workspace=await prisma.railWorkspace.findUnique({where:{userId:job.userId},include:{user:{select:{isActive:true,phoneNumber:true,email:true,emailVerifiedAt:true}}}});const planner=workspace?applyAccountSettings(await storedPlanner(prisma,job.userId,workspace,[reminderJourneyId(job.payload)??""]),currentPolicy,workspace.user.phoneNumber??"",await prisma.railTelegram.findUnique({where:{userId:job.userId}}),telegramConfigured(currentConfig)?currentConfig.telegram!.id:undefined):undefined;
       const actual=currentPolicy.remindersEnabled&&(job.kind!=="WHATSAPP"||currentPolicy.whatsappEnabled)&&(job.kind!=="TELEGRAM"||currentPolicy.telegramEnabled)&&planner&&workspace?.user.isActive?reminderJobs(planner,now,workspace.user.emailVerifiedAt?workspace.user.email:undefined,(await prisma.railPush.findMany({where:{userId:job.userId},select:{id:true}})).map(d=>d.id)).find(j=>j.key===job.key):undefined;
       if(!actual){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"CANCELLED",lease:null,leaseUntil:null}});continue;}
       if(!job.retryRequestedAt&&!job.deferredUntil&&actual.dueAt.getTime()<now.getTime()-86400000){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"MISSED",lease:null,leaseUntil:null}});continue;}
@@ -70,5 +64,5 @@ export async function processRailWatch(now=new Date()){
       await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"SENT",sentAt:now,providerId,lastError:null,deferredUntil:null,lease:null,leaseUntil:null}});sent++;logger.info("reminder.delivered",{jobId:job.id,kind:job.kind});
     }catch(error){logger.error("reminder.delivery_failed",{jobId:job.id,kind:job.kind,attempt:job.attempts,errorType:error instanceof Error?error.name:"UnknownError"});await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"FAILED",dueAt:new Date(now.getTime()+Math.min(60,2**(job.attempts+1))*60000),lastError:"Delivery failed. Check the provider configuration.",lease:null,leaseUntil:null}});}
   }
-  const calendars=await syncGoogleCalendars();return {accounts:workspaces.length,sent,calendars};
+  const calendars=await syncGoogleCalendars();return {accounts:batch.accounts.length,sent,calendars,...(planningFailures?{planningFailures}:{})};
 }

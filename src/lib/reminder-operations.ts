@@ -1,6 +1,8 @@
+import {reminderJourneyId} from "./in-app-notifications";
+import {storedPlanner} from "./workspace-storage";
 import { prisma } from "./db";
 import { ApiError } from "./http";
-import { applyAccountSettings, decodeWorkspace } from "./railwatch-store";
+import { applyAccountSettings } from "./railwatch-store";
 import { getFeaturePolicy } from "./settings";
 import { getProviderConfiguration, telegramConfigured } from "./provider-config";
 import { reminderJobs } from "./railwatch-jobs";
@@ -41,7 +43,7 @@ export async function retryReminder(id:string,actorId:string,now=new Date()) {
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${job.userId} FOR UPDATE`;
     const workspace=await tx.railWorkspace.findUnique({where:{userId:job.userId},include:{user:true}});
     if(!workspace?.user.isActive||!policy.remindersEnabled||!['MISSED','FAILED'].includes(job.state))throw new ApiError(409,"This reminder can no longer be retried.","REMINDER_NOT_RETRYABLE");
-    const planner=applyAccountSettings(decodeWorkspace(workspace.payload),policy,workspace.user.phoneNumber??"",await tx.railTelegram.findUnique({where:{userId:job.userId}}),telegramConfigured(config)?config.telegram!.id:undefined);
+    const planner=applyAccountSettings(await storedPlanner(tx,job.userId,workspace,[reminderJourneyId(job.payload)??""]),policy,workspace.user.phoneNumber??"",await tx.railTelegram.findUnique({where:{userId:job.userId}}),telegramConfigured(config)?config.telegram!.id:undefined);
     const devices=await tx.railPush.findMany({where:{userId:job.userId},select:{id:true}});
     const actual=reminderJobs(planner,now,workspace.user.emailVerifiedAt?workspace.user.email:undefined,devices.map(d=>d.id)).find(j=>j.key===job.key);
     if(!actual||(job.kind==='WHATSAPP'&&!policy.whatsappEnabled)||(job.kind==='TELEGRAM'&&!policy.telegramEnabled))throw new ApiError(409,"The journey or delivery preferences changed. This reminder is no longer needed.","REMINDER_NO_LONGER_NEEDED");

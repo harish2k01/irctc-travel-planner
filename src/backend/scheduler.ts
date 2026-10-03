@@ -27,7 +27,7 @@ export async function runWithHeartbeat(task=processRailWatch) {
   await prisma.railOperations.upsert({where:{id:"scheduler"},create:{id:"scheduler",startedAt:new Date(started)},update:{startedAt:new Date(started)}});
   try {
     const result=await task();
-    await prisma.railOperations.update({where:{id:"scheduler"},data:{succeededAt:new Date(),durationMs:Date.now()-started}});
+    await prisma.railOperations.update({where:{id:"scheduler"},data:{...(result.planningFailures?{failedAt:new Date(),failureCount:{increment:1}}:{succeededAt:new Date()}),durationMs:Date.now()-started}});
     return result;
   } catch(error) {
     await prisma.railOperations.update({where:{id:"scheduler"},data:{failedAt:new Date(),durationMs:Date.now()-started,failureCount:{increment:1}}});

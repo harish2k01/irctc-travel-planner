@@ -1,7 +1,7 @@
+import {storedPlanner} from "./workspace-storage";
 import { reminderJourneyId } from "./in-app-notifications";
 import { addDays,todayIST,type Planner } from "./travel-planner";
 import { prisma } from "./db";
-import { decodeWorkspace } from "./railwatch-store";
 import { ApiError } from "./http";
 
 /** Resolves the end of an opted-in IST quiet window, including windows crossing midnight. */
@@ -21,7 +21,7 @@ export async function setJourneySnooze(userId:string,journeyId:string,minutes:nu
   return prisma.$transaction(async tx=>{
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
     const workspace=await tx.railWorkspace.findUnique({where:{userId}});
-    const journey=workspace?decodeWorkspace(workspace.payload).journeys.find(j=>j.id===journeyId):undefined;
+    const journey=workspace?(await storedPlanner(tx,userId,workspace,[journeyId])).journeys.find(j=>j.id===journeyId):undefined;
     if(!journey)throw new ApiError(404,"Journey not found.","NOT_FOUND");
     if(minutes===0){
       await tx.railReminderPause.deleteMany({where:{userId,journeyId}});
