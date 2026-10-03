@@ -7,9 +7,12 @@ export type TicketAttachment = z.infer<typeof attachmentSchema>;
 export const recurrenceSchema = z.object({ frequency: z.enum(["daily", "weekly", "monthly", "yearly"]), interval: z.number().int().min(1).max(365), monthlyPattern: z.enum(["date", "weekday"]), dayOfMonth: z.number().int().min(1).max(31), ordinal: z.number().int().min(-1).max(5).refine(v => v !== 0), weekday: z.number().int().min(0).max(6) });
 export const REMINDER_KEYS = ["previous_evening", "morning", "opening"] as const;
 const clock = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+export const reminderScheduleSchema = z.array(z.object({ daysBefore: z.number().int().min(0).max(365), time: clock })).max(20);
+export type ReminderSchedule = z.infer<typeof reminderScheduleSchema>;
+export const DEFAULT_TATKAL_SCHEDULE: ReminderSchedule = [{ daysBefore: 1, time: "20:00" }, { daysBefore: 0, time: "09:30" }, { daysBefore: 0, time: "09:55" }];
 export const reminderClockSchema = z.object({ previous_evening: clock, morning: clock, opening: clock });
 export const DEFAULT_CLOCK = { previous_evening: "20:00", morning: "07:00", opening: "07:55" };
-export const reminderOverrideSchema = z.object({ mode: z.enum(["inherit", "off", "custom"]), times: z.array(z.enum(REMINDER_KEYS)), clock: reminderClockSchema });
+export const reminderOverrideSchema = z.object({ mode: z.enum(["inherit", "off", "custom"]), times: z.array(z.enum(REMINDER_KEYS)), clock: reminderClockSchema, schedule: reminderScheduleSchema.optional() });
 export type ReminderOverride = z.infer<typeof reminderOverrideSchema>;
 const routeFields = {
   from: z.string().trim().min(1).max(80), to: z.string().trim().min(1).max(80),
@@ -22,10 +25,12 @@ export const journeySchema = z.object({
   reminderOverride: reminderOverrideSchema.optional(), timePreference: z.enum(["any", "morning", "afternoon", "evening", "night"]).optional(),
   departureConfirmed: z.boolean().optional(),
   bookingDateOverride: daySchema.optional(),
+  bookingType: z.enum(["normal", "tatkal"]).optional(), tatkalClass: z.enum(["ac", "non_ac"]).optional(), trainOriginDate: daySchema.optional(),
+  cancellationReminder: z.object({ enabled: z.boolean(), time: clock, schedule: reminderScheduleSchema.optional() }).optional(),
   trainNumber: z.string().max(20).optional(), trainName: z.string().max(100).optional(), coach: z.string().max(20).optional(), seat: z.string().max(30).optional(), berth: z.string().max(30).optional(),
   completedAt:daySchema.optional(), cancelledAt: daySchema.optional(), archivedAt: daySchema.optional(), attachments: z.array(attachmentSchema).max(20).optional(),
   status: statusSchema, pnr: z.string().regex(/^$|^\d{10}$/), notes: z.string().max(1000),
-});
+}).refine(j=>j.bookingType!=="tatkal"||Boolean(j.tatkalClass&&j.trainOriginDate&&j.trainOriginDate<=j.date),"Choose the Tatkal class and a train starting date on or before travel.");
 export const ruleSchema = z.object({
   ...routeFields, id: z.string(), name: z.string().trim().min(1).max(80), start: daySchema, end: daySchema.nullable(),
   linkedRuleId: z.string().optional(), paused: z.boolean().default(false), excludedDates: z.array(daySchema).default([]),
@@ -40,14 +45,14 @@ export const ruleSchema = z.object({
 export const holidaySchema = z.object({ id: z.string(), name: z.string().trim().min(1).max(100), date: daySchema, type: z.enum(["company", "leave"]) });
 export const plannerSchema = z.object({
   version: z.literal(1), journeys: z.array(journeySchema).max(10000), rules: z.array(ruleSchema).max(100), holidays: z.array(holidaySchema).max(3000),
-  settings: z.object({ emailEnabled:z.boolean().default(false),telegramEnabled:z.boolean().default(false),telegramChatId:z.string().max(30).default(""),telegramProviderId:z.string().max(80).default(""), weekStartsOn:z.union([z.literal(0),z.literal(1)]).default(0),routineHorizonMode:z.enum(["months","count"]).default("months"),routineMonthsAhead:z.number().int().min(1).max(24).default(6),routineTicketCount:z.number().int().min(1).max(100).default(26), whatsappEnabled: z.boolean().default(false), sidebarCollapsed: z.boolean().default(false), bookingWindowDays: z.number().int().min(1).max(365).default(60), theme: z.enum(["light", "dark"]).default("light"), weekendDays: z.array(z.number().int().min(0).max(6)).max(6), reminderTimes: z.array(z.enum(REMINDER_KEYS)), reminderClock: reminderClockSchema.default(DEFAULT_CLOCK), whatsappNumber: z.string().max(20) }),
+  settings: z.object({ bookingSchedule:reminderScheduleSchema.optional(),tatkalSchedule:reminderScheduleSchema.optional(),tatkalNonAcSchedule:reminderScheduleSchema.optional(),cancellationTime:clock.default("09:00"),cancellationEnabled:z.boolean().default(true),cancellationSchedule:reminderScheduleSchema.optional(),emailEnabled:z.boolean().default(false),telegramEnabled:z.boolean().default(false),telegramChatId:z.string().max(30).default(""),telegramProviderId:z.string().max(80).default(""), weekStartsOn:z.union([z.literal(0),z.literal(1)]).default(0),routineHorizonMode:z.enum(["months","count"]).default("months"),routineMonthsAhead:z.number().int().min(1).max(24).default(6),routineTicketCount:z.number().int().min(1).max(100).default(26), whatsappEnabled: z.boolean().default(false), sidebarCollapsed: z.boolean().default(false), bookingWindowDays: z.number().int().min(1).max(365).default(60), theme: z.enum(["light", "dark"]).default("light"), weekendDays: z.array(z.number().int().min(0).max(6)).max(6), reminderTimes: z.array(z.enum(REMINDER_KEYS)), reminderClock: reminderClockSchema.default(DEFAULT_CLOCK), whatsappNumber: z.string().max(20) }),
 });
 export type Journey = z.infer<typeof journeySchema>;
 export type Rule = z.infer<typeof ruleSchema>;
 export type Holiday = z.infer<typeof holidaySchema>;
 export type Planner = z.infer<typeof plannerSchema>;
 export type JourneyStatus = Journey["status"];
-export const EMPTY_PLANNER: Planner = { version: 1, journeys: [], rules: [], holidays: [], settings: { emailEnabled:false,telegramEnabled:false,telegramChatId:"",telegramProviderId:"",weekStartsOn:0,routineHorizonMode:"months",routineMonthsAhead:6,routineTicketCount:26,whatsappEnabled: false, sidebarCollapsed: false, bookingWindowDays: 60, theme: "light", weekendDays: [0, 6], reminderTimes: ["previous_evening", "morning", "opening"], reminderClock: DEFAULT_CLOCK, whatsappNumber: "" } };
+export const EMPTY_PLANNER: Planner = { version: 1, journeys: [], rules: [], holidays: [], settings: { cancellationTime:"09:00",cancellationEnabled:true,emailEnabled:false,telegramEnabled:false,telegramChatId:"",telegramProviderId:"",weekStartsOn:0,routineHorizonMode:"months",routineMonthsAhead:6,routineTicketCount:26,whatsappEnabled: false, sidebarCollapsed: false, bookingWindowDays: 60, theme: "light", weekendDays: [0, 6], reminderTimes: ["previous_evening", "morning", "opening"], reminderClock: DEFAULT_CLOCK, whatsappNumber: "" } };
 const DAY_MS = 86400000;
 /** Validates a real calendar date in YYYY-MM-DD format. */
 export function isDay(value: string) {
@@ -66,9 +71,13 @@ export function todayIST(now = new Date()) { return new Intl.DateTimeFormat("en-
 /** Formats a calendar date for display using the requested date components. */
 export function formatDay(day: string, options: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", weekday: "short" }) { return new Intl.DateTimeFormat("en-IN", { ...options, timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`)); }
 /** Calculates the shared advance-booking date for a journey. */
-export function bookingDay(journey: Pick<Journey, "date" | "windowDays" | "originOffset" | "bookingDateOverride">) { return addDays(journey.date, -journey.windowDays); }
-/** Returns the booking-opening instant at 8 AM IST. */
-export function bookingInstant(journey: Pick<Journey, "date" | "windowDays" | "originOffset" | "bookingDateOverride">) { return new Date(`${bookingDay(journey)}T08:00:00+05:30`); }
+export function bookingDay(journey: Pick<Journey, "date" | "windowDays" | "originOffset" | "bookingDateOverride"> & Partial<Pick<Journey,"bookingType"|"tatkalClass"|"trainOriginDate">>) { return journey.bookingType === "tatkal" ? addDays(journey.trainOriginDate ?? journey.date, -1) : addDays(journey.date, -journey.windowDays); }
+/** Returns the normal or Tatkal booking-opening instant in IST. */
+export function bookingInstant(journey: Pick<Journey, "date" | "windowDays" | "originOffset" | "bookingDateOverride"> & Partial<Pick<Journey,"bookingType"|"tatkalClass"|"trainOriginDate">>) { return new Date(`${bookingDay(journey)}T${bookingClock(journey)}:00+05:30`); }
+/** Returns the quota-specific booking opening time in IST. */
+export function bookingClock(journey:Partial<Pick<Journey,"bookingType"|"tatkalClass">>) { return journey.bookingType === "tatkal" ? journey.tatkalClass === "non_ac" ? "11:00" : "10:00" : "08:00"; }
+/** Formats the opening clock for reminder messages. */
+export function bookingTimeLabel(journey:Partial<Journey>) { const hour=Number(bookingClock(journey).slice(0,2));return `${hour}:00 AM IST`; }
 /** Classifies a booking window relative to the current instant. */
 export function bookingPhase(journey: Journey, now = new Date()) {
   if (journey.date < todayIST(now)) return "past";
@@ -174,6 +183,24 @@ export function effectiveReminders(planner: Planner, journey: Journey) {
   const chosen = override ?? (routine?.mode !== "inherit" ? routine : undefined);
   return chosen?.mode === "off" ? { times: [], clock: planner.settings.reminderClock } : chosen?.mode === "custom" ? { times: chosen.times, clock: chosen.clock } : { times: planner.settings.reminderTimes, clock: planner.settings.reminderClock };
 }
+/** Converts account or journey schedules to stable, deduplicated IST instants. */
+export function scheduledReminders(planner:Planner, journey:Journey, now=new Date()) {
+  if(journey.status === "cancellation_needed") {
+    const pref=journey.cancellationReminder;
+    if(!(pref?.enabled ?? planner.settings.cancellationEnabled)) return [];
+    const schedule=pref ? pref.schedule : planner.settings.cancellationSchedule;
+    return schedule ? scheduleInstants(journey.date,schedule) : [`${todayIST(now)}T${pref?.time ?? planner.settings.cancellationTime}:00+05:30`];
+  }
+  const routine=planner.rules.find(r=>r.id===journey.ruleId)?.reminderOverride;
+  const chosen=journey.reminderOverride?.mode!=="inherit"&&journey.reminderOverride ? journey.reminderOverride : routine?.mode!=="inherit" ? routine : undefined;
+  if(chosen?.mode==="off") return [];
+  const defaults=journey.tatkalClass==="non_ac" ? planner.settings.tatkalNonAcSchedule ?? DEFAULT_TATKAL_SCHEDULE.map(row=>row.daysBefore ? row : {...row,time:row.time.replace("09:","10:")}) : planner.settings.tatkalSchedule ?? DEFAULT_TATKAL_SCHEDULE;
+  const schedule=chosen?.mode==="custom" ? chosen.schedule : journey.bookingType==="tatkal" ? defaults : planner.settings.bookingSchedule;
+  if(schedule) return scheduleInstants(bookingDay(journey),schedule);
+  const pref=effectiveReminders(planner,journey);return reminderPreview(journey,pref.times,pref.clock);
+}
+/** Sorts and deduplicates explicitly configured days and delivery clocks. */
+export function scheduleInstants(day:string,schedule:ReminderSchedule) { return [...new Set(schedule.map(r=>`${addDays(day,-r.daysBefore)}T${r.time}:00+05:30`))].sort(); }
 /** Normalizes supported backup and stored workspace formats without discarding retained history. */
 export function migratePlanner(value: unknown): Planner {
   if (!value || typeof value !== "object") return plannerSchema.parse(value);
@@ -260,8 +287,7 @@ export function calendarFile(planner: Planner) {
     } else events.push(["BEGIN:VEVENT", `UID:${escape(j.id)}-journey@railwatch.local`, `DTSTAMP:${now}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${description}`, `DTSTART;VALUE=DATE:${j.date.replaceAll("-", "")}`, `DTEND;VALUE=DATE:${addDays(j.date, 1).replaceAll("-", "")}`, "END:VEVENT"].join("\r\n"));
     if (j.status === "needs_booking") {
       const opens = bookingInstant(j);
-      const reminders = effectiveReminders(planner, j);
-      const alarms = reminderPreview(j, reminders.times, reminders.clock).flatMap(time => ["BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Train booking reminder", `TRIGGER;VALUE=DATE-TIME:${stamp(new Date(time))}`, "END:VALARM"]);
+      const alarms = scheduledReminders(planner,j).flatMap(time => ["BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:Train booking reminder", `TRIGGER;VALUE=DATE-TIME:${stamp(new Date(time))}`, "END:VALARM"]);
       event("booking", `Book train: ${j.from} → ${j.to} (${formatDay(j.date)})`, opens, new Date(opens.getTime() + 900000), alarms);
     }
   }

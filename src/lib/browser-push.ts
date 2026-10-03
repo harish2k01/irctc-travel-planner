@@ -1,4 +1,5 @@
 import webpush from "web-push";
+import { Agent } from "node:https";
 import { createHash } from "node:crypto";
 import { prisma } from "./db";
 import { decryptSecret, encryptSecret } from "./crypto";
@@ -35,13 +36,16 @@ export async function sendBrowserPush(userId: string, deviceId: string, message:
   try {
     await webpush.sendNotification(subscription, JSON.stringify({ title: "RailWatch", body: message, tag, url: "/journeys" }), {
       TTL: 3600, timeout: 15000,
+      // Apple publishes IPv6 addresses even on hosts without usable IPv6 egress.
+      ...(new URL(subscription.endpoint).hostname.endsWith(".push.apple.com") ? { agent: new Agent({ family: 4 }) } : {}),
       vapidDetails: { subject: new URL(process.env.APP_URL ?? "http://localhost:3000").origin, publicKey: identity.publicKey, privateKey: decryptSecret(identity.privateKey)! },
     });
     logger.info("push.delivered", { deviceId });
   } catch (error) {
     const status = (error as { statusCode?: number }).statusCode;
     if (status === 404 || status === 410) { await prisma.railPush.deleteMany({ where: { id: deviceId, userId } }); logger.info("push.expired", { deviceId }); return; }
-    logger.error("push.delivery_failed", { deviceId, status });
-    throw new Error("Browser push delivery failed.");
+    const code = (error as { code?: string }).code;
+    logger.error("push.delivery_failed", { deviceId, status, code });
+    throw new ApiError(502, status === 403 ? "The push service rejected this device. Disable notifications on this device, then enable them again." : "Could not reach this device’s push service. Try again shortly.", "PUSH_DELIVERY_FAILED");
   }
 }

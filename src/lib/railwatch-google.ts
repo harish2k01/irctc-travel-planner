@@ -4,7 +4,7 @@ import { prisma } from "./db";
 import { decryptSecret,encryptSecret } from "./crypto";
 import { getFeaturePolicy } from "./settings";
 import { applyAccountSettings,decodeWorkspace } from "./railwatch-store";
-import { addDays,bookingDay,effectiveReminders,reminderPreview,type Planner } from "./travel-planner";
+import { addDays,bookingDay,bookingClock,scheduledReminders,type Planner } from "./travel-planner";
 import { getProviderConfiguration,googleConfigured } from "./provider-config";
 /** Checks instance configuration before Google connection or synchronization. */
 export async function googleReady(){return googleConfigured(await getProviderConfiguration());}
@@ -18,7 +18,7 @@ export function googleEvents(planner:Planner){
     const summary=`${j.status==="cancellation_needed"?"Cancel ticket":"Train"}: ${j.from} → ${j.to}`;
     const dateTime=`${j.date}T${j.departure}:00+05:30`;
     events.push({id:id(`${j.id}:journey`),summary,description:[j.trainNumber,j.trainName,j.notes].filter(Boolean).join(" · "),start:j.departureConfirmed?{dateTime,timeZone:"Asia/Kolkata"}:{date:j.date},end:j.departureConfirmed?{dateTime:new Date(new Date(dateTime).getTime()+3600000).toISOString(),timeZone:"Asia/Kolkata"}:{date:addDays(j.date,1)},reminders:{useDefault:false,overrides:[]}});
-    if(j.status==="needs_booking"){const dateTime=`${bookingDay(j)}T08:00:00+05:30`;const pref=effectiveReminders(planner,j);const overrides=reminderPreview(j,pref.times,pref.clock).map(t=>({method:"popup" as const,minutes:Math.round((new Date(dateTime).getTime()-new Date(t).getTime())/60000)})).filter(r=>r.minutes>=0&&r.minutes<=40320).slice(0,5);
+    if(j.status==="needs_booking"){const dateTime=`${bookingDay(j)}T${bookingClock(j)}:00+05:30`;const overrides=scheduledReminders(planner,j).map(t=>({method:"popup" as const,minutes:Math.round((new Date(dateTime).getTime()-new Date(t).getTime())/60000)})).filter(r=>r.minutes>=0&&r.minutes<=40320).slice(0,5);
       events.push({id:id(`${j.id}:booking`),summary:`Book train: ${j.from} → ${j.to}`,description:`Travel date: ${j.date}. Booking date is based on your shared ${planner.settings.bookingWindowDays}-day window.`,start:{dateTime,timeZone:"Asia/Kolkata"},end:{dateTime:new Date(new Date(dateTime).getTime()+900000).toISOString(),timeZone:"Asia/Kolkata"},reminders:{useDefault:false,overrides}});
     }
   }

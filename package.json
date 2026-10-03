@@ -30,7 +30,10 @@
   "overrides": {
     "postcss": "8.5.26",
     "deepmerge-ts": "8.0.2",
-    "mysql2": "3.24.4"
+    "mysql2": "3.24.4",
+    "@next/eslint-plugin-next": {
+      "fast-glob": "npm:tinyglobby@0.2.17"
+    }
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

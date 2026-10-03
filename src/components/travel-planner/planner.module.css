@@ -127,3 +127,8 @@
 .sidebarInstall button{width:100%;white-space:normal;overflow-wrap:anywhere;font-size:12px}
 
 @media(max-width:600px){.desktopFilterReset{display:none}}
+
+.mobileCalendarViews{display:none}@media(max-width:768px){.mobileCalendarViews{display:flex}}
+.pageHead>div:first-child{margin-right:auto}.pageHead{justify-content:flex-start;gap:12px}.pdfPages{display:grid;gap:20px}.pdfPages canvas{display:block;background:white}.scheduleRows{display:grid;gap:10px}.scheduleRow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end}.scheduleRow button{min-height:42px}.scheduleRows input{width:100%;min-width:0}.scheduleRows small{display:block;color:var(--muted)}
+
+.ticketViewport{overflow:auto;max-height:60dvh}.ticketViewer nav{position:sticky;top:0;background:var(--panel);z-index:1}
