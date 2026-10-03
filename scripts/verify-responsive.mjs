@@ -18,7 +18,7 @@ export async function verifyResponsive({page,api,url,otherApi}) {
     assert.equal((await api('/api/railwatch/workspace','put',state)).status(),200);
     for (const width of [320,390,768,1482]) {
       await page.setViewportSize({width,height:844});
-      for (const path of ['/','/journeys','/calendar','/routines','/holidays','/tickets','/admin']) {
+      for (const path of ['/','/journeys','/calendar','/routines','/holidays','/tickets','/admin','/admin/operations']) {
         await page.goto(url+path);
         await page.getByRole('heading',{level:1}).waitFor();
         await expect(page.locator('[data-theme]')).toHaveAttribute('data-theme',theme);

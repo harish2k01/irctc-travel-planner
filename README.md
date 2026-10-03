@@ -68,3 +68,5 @@ The current application implements the planning and reminder core. [Production r
 ### Email booking reminders
 
 Configure and test SMTP under Admin Settings. Users verify their saved email under User Settings → Profile, confirm the emailed link, and opt into Email Reminders under Connections. Verification links expire after 24 hours and can be used once. Changing the email pauses delivery until the new address is verified. Reminders use branded HTML with a plain-text alternative and the backend's durable schedule/retry queue; failures appear in the notification bell. SMTP is optional for self-hosting and does not block initial administrator setup or signup.
+
+For administrator recovery and monitoring, see [reminder operations](docs/reminder-operations.md).

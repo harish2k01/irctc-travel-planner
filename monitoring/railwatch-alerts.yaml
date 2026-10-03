@@ -1,0 +1,38 @@
+groups:
+  - name: railwatch-reminders
+    rules:
+      - alert: RailWatchMonitoringUnavailable
+        expr: up{job="railwatch"} == 0 or absent(up{job="railwatch"})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: RailWatch operational metrics cannot be scraped
+      - alert: RailWatchSchedulerStale
+        expr: time() - railwatch_scheduler_last_success_timestamp_seconds{job="railwatch"} > 180
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: RailWatch scheduled processing has stopped completing
+      - alert: RailWatchReminderQueueLate
+        expr: railwatch_reminder_oldest_due_age_seconds{job="railwatch"} > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: RailWatch reminders are waiting more than five minutes
+      - alert: RailWatchReminderRecoveryNeeded
+        expr: railwatch_reminders_exhausted{job="railwatch"} + railwatch_reminders_missed{job="railwatch"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Review missed or exhausted reminders in RailWatch Delivery Health
+      - alert: RailWatchReminderProviderFailures
+        expr: railwatch_reminder_provider_failures{job="railwatch"} > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: A RailWatch reminder channel has unresolved delivery failures

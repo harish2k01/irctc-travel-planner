@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { processRailWatch } from "@/lib/railwatch-jobs";
 import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/db";
 
 /** Claims a PostgreSQL advisory lock so only one backend replica processes scheduled work. */
 export async function runScheduledWork(pool: Pool, task = processRailWatch) {
@@ -20,6 +21,20 @@ export async function runScheduledWork(pool: Pool, task = processRailWatch) {
   }
 }
 
+/** Persists the leader's run outcome without recording private task results or errors. */
+export async function runWithHeartbeat(task=processRailWatch) {
+  const started=Date.now();
+  await prisma.railOperations.upsert({where:{id:"scheduler"},create:{id:"scheduler",startedAt:new Date(started)},update:{startedAt:new Date(started)}});
+  try {
+    const result=await task();
+    await prisma.railOperations.update({where:{id:"scheduler"},data:{succeededAt:new Date(),durationMs:Date.now()-started}});
+    return result;
+  } catch(error) {
+    await prisma.railOperations.update({where:{id:"scheduler"},data:{failedAt:new Date(),durationMs:Date.now()-started,failureCount:{increment:1}}});
+    throw error;
+  }
+}
+
 /** Runs scheduled processing once per minute and returns an orderly shutdown callback. */
 export function startScheduler() {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 1, connectionTimeoutMillis: 5000 });
@@ -27,7 +42,7 @@ export function startScheduler() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let active: Promise<void> | undefined;
   const /** Refreshes time-dependent state or runs the next scheduled processing cycle. */ tick = async () => {
-    try { await runScheduledWork(pool); }
+    try { await runScheduledWork(pool,()=>runWithHeartbeat()); }
     catch(error) { logger.error("scheduler.failed", { errorType:error instanceof Error?error.name:"UnknownError", message: "Scheduled processing failed; retrying next minute." }); }
     if (!stopped) timer = setTimeout(() => { active = tick(); }, 60_000 - Date.now() % 60_000);
   };

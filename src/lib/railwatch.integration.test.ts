@@ -12,6 +12,8 @@ import { prisma } from "./db";
 import { loadWorkspace,saveWorkspace } from "./railwatch-store";
 import { encryptSecret } from "./crypto";
 import { processRailWatch } from "./railwatch-jobs";
+import { retryReminder } from "./reminder-operations";
+import { runWithHeartbeat } from "@/backend/scheduler";
 import { addDays,EMPTY_PLANNER,todayIST,type Journey,type Rule } from "./travel-planner";
 vi.mock("./railwatch-google",()=>({syncGoogleCalendars:async()=>0}));
 const emailDelivery=vi.hoisted(()=>vi.fn().mockResolvedValue({sent:true}));
@@ -21,7 +23,59 @@ vi.mock("./browser-push",()=>({sendBrowserPush:pushDelivery}));
 const users:string[]=[];
 async function fixture(){if(!new URL(process.env.DATABASE_URL!).pathname.endsWith("_test"))throw new Error("Use an isolated test database.");await prisma.appSettings.upsert({where:{id:"global"},create:{id:"global"},update:{bookingWindowDays:60,remindersEnabled:true,whatsappEnabled:true}});const u=await prisma.user.create({data:{email:`${randomUUID()}@railwatch.invalid`}});users.push(u.id);return {user:u,...await loadWorkspace(u.id)};}
 afterEach(async()=>{if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
-describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",()=>{
+describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",{timeout:15000},()=>{
+  it("persists successful and failed scheduler outcomes across callers",async()=>{
+    const before=await prisma.railOperations.findUnique({where:{id:"scheduler"}});
+    await expect(runWithHeartbeat(async()=>{throw new Error("private-provider-detail");})).rejects.toThrow("private-provider-detail");
+    const failed=await prisma.railOperations.findUniqueOrThrow({where:{id:"scheduler"}});
+    expect(failed.failureCount).toBe((before?.failureCount??0)+1);expect(failed.failedAt).not.toBeNull();
+    await runWithHeartbeat(async()=>({accounts:0,sent:0,calendars:0}));
+    const recovered=await prisma.railOperations.findUniqueOrThrow({where:{id:"scheduler"}});
+    expect(recovered.succeededAt!.getTime()).toBeGreaterThanOrEqual(failed.failedAt!.getTime());
+    expect(JSON.stringify(recovered)).not.toContain("private-provider-detail");
+  });
+  it("releases an abandoned final-attempt lease for operator review",async()=>{
+    const f=await fixture(),now=new Date(`${todayIST()}T05:00:00Z`);
+    const journey:Journey={id:"abandoned",from:"A",to:"B",date:addDays(todayIST(now),60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
+    await saveWorkspace(f.user.id,{...f.planner,journeys:[journey],settings:{...f.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}]}},f.revision);
+    await processRailWatch(now);
+    const job=await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id,kind:"IN_APP"}});
+    await prisma.railJob.update({where:{id:job.id},data:{state:"SENDING",attempts:5,lease:"abandoned",leaseUntil:new Date(now.getTime()-1000)}});
+    await processRailWatch(now);
+    const recovered=await prisma.railJob.findUniqueOrThrow({where:{id:job.id}});
+    expect(recovered.state).toBe("FAILED");expect(recovered.lease).toBeNull();expect(recovered.attempts).toBe(5);
+  });
+  it("records outage misses without a delivery burst and serializes explicit retries",async()=>{
+    pushDelivery.mockClear();const f=await fixture(),now=new Date(`${todayIST()}T05:00:00Z`);
+    const journey:Journey={id:"outage",from:"A",to:"B",date:addDays(todayIST(now),58),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
+    await saveWorkspace(f.user.id,{...f.planner,journeys:[journey],settings:{...f.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}]}},f.revision);
+    await prisma.railPush.create({data:{userId:f.user.id,endpointHash:randomUUID(),subscription:encryptSecret("{}")}});
+    await processRailWatch(now);
+    expect(pushDelivery).not.toHaveBeenCalled();
+    const job=await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id,kind:"PUSH"}});
+    expect(job.state).toBe("MISSED");
+    const retry=await Promise.allSettled([retryReminder(job.id,f.user.id,now),retryReminder(job.id,f.user.id,now)]);
+    expect(retry.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+    await Promise.all([processRailWatch(now),processRailWatch(now)]);
+    expect(pushDelivery).toHaveBeenCalledTimes(1);
+    expect(await prisma.auditLog.count({where:{action:"reminder.retry_requested",targetId:job.id}})).toBe(1);
+    await prisma.user.update({where:{id:f.user.id},data:{isActive:false}});await processRailWatch(now);
+    expect(await prisma.railJob.count({where:{userId:f.user.id,state:"MISSED"}})).toBe(0);
+  });
+  it("rejects recovery after booking and cancels an already queued retry after preferences change",async()=>{
+    pushDelivery.mockClear();const f=await fixture(),now=new Date(`${todayIST()}T05:00:00Z`);
+    const journey:Journey={id:"recovery-change",from:"A",to:"B",date:addDays(todayIST(now),58),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
+    await saveWorkspace(f.user.id,{...f.planner,journeys:[journey],settings:{...f.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}]}},f.revision);
+    await prisma.railPush.create({data:{userId:f.user.id,endpointHash:randomUUID(),subscription:encryptSecret("{}")}});
+    await processRailWatch(now);
+    const job=await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id,kind:"PUSH"}});
+    await retryReminder(job.id,f.user.id,now);
+    const latest=await loadWorkspace(f.user.id);await saveWorkspace(f.user.id,{...latest.planner,journeys:[{...journey,status:"booked"}]},latest.revision);
+    await processRailWatch(now);
+    expect(pushDelivery).not.toHaveBeenCalled();
+    expect((await prisma.railJob.findUniqueOrThrow({where:{id:job.id}})).state).toBe("CANCELLED");
+    await expect(retryReminder(job.id,f.user.id,now)).rejects.toThrow(/no longer/);
+  });
   it("leases cancellation alerts once per device and stops queued follow-ups after cancellation",async()=>{
     pushDelivery.mockClear();const f=await fixture(),now=new Date(`${todayIST()}T05:00:00Z`);
     const journey:Journey={id:"cancel-follow-up",from:"A",to:"B",date:addDays(todayIST(now),3),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"cancellation_needed",notes:""};
