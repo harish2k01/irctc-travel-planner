@@ -1,3 +1,4 @@
+import { syncJourneyIndex } from "./journey-index";
 import { mergeWorkspace, sameContent, WorkspaceConflict } from "./workspace-merge";
 import { getProviderConfiguration,telegramConfigured } from "./provider-config";
 import { telegramRecipient } from "./telegram";
@@ -37,17 +38,18 @@ export async function loadWorkspace(userId: string, now = new Date()) {
     const user=await tx.user.findUniqueOrThrow({where:{id:userId}});const telegram=await tx.railTelegram.findUnique({where:{userId}});
     const initial=applyAccountSettings(EMPTY_PLANNER,policy,user.phoneNumber??"",telegram,telegramProviderId);
     const existing = await tx.railWorkspace.findUnique({where:{userId}});
-    if (!existing) { const record = await tx.railWorkspace.create({data:{userId,payload:encryptSecret(JSON.stringify(initial))}}); return {planner:initial,revision:record.version}; }
+    if (!existing) { const record = await tx.railWorkspace.create({data:{userId,payload:encryptSecret(JSON.stringify(initial))}}); await syncJourneyIndex(tx,userId,initial,record.version,now);return {planner:initial,revision:record.version}; }
     const planner=decodeWorkspace(existing.payload); const retention=expiredTicketFiles(reconcileJourneyLifecycle(extendRoutines(applyAccountSettings(planner,policy,user.phoneNumber??"",telegram,telegramProviderId),todayIST(now)),todayIST(now)),todayIST(now));const extended=retention.planner;
     if(retention.ids.length){const removed=await tx.railFile.deleteMany({where:{userId,id:{in:retention.ids}}});deletedFiles=removed.count;}
-    if (!sameContent(extended, planner)) { const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(extended)),version:{increment:1}}}); return {planner:extended,revision:record.version}; }
+    if (!sameContent(extended, planner)) { const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(extended)),version:{increment:1}}}); await syncJourneyIndex(tx,userId,extended,record.version,now);return {planner:extended,revision:record.version}; }
+    if(existing.listVersion!==existing.version||existing.listDay!==todayIST(now))await syncJourneyIndex(tx,userId,planner,existing.version,now);
     return {planner,revision:existing.version};
-  },{timeout:20000});
+  },{timeout:60000});
   if(deletedFiles)logger.info("tickets.retention_deleted",{files:deletedFiles});
   return result;
 }
 /** Validates ownership, merges compatible concurrent edits, and persists the encrypted workspace atomically. */
-export async function saveWorkspace(userId: string, value: unknown, revision: number, base?: unknown) {
+export async function saveWorkspace(userId: string, value: unknown, revision: number, base?: unknown, partial=false) {
   const policy=await getFeaturePolicy();const config=await getProviderConfiguration();const telegramProviderId=telegramConfigured(config)?config.telegram!.id:undefined;
   const input=plannerSchema.parse(value);
   if(input.settings.emailEnabled&&!policy.remindersEnabled)throw new ApiError(403,"Booking reminders are disabled by the administrator.","FEATURE_DISABLED");
@@ -57,7 +59,7 @@ export async function saveWorkspace(userId: string, value: unknown, revision: nu
     let planner=validateWorkspace(applyAccountSettings(input,policy,user.phoneNumber??"",telegram,telegramProviderId));
     const current=await tx.railWorkspace.findUnique({where:{userId}});
     if (!current) throw new ApiError(409,"Reload your workspace before saving.","VERSION_CONFLICT");
-    if (current.version !== revision) {
+    if (partial || current.version !== revision) {
       if (!base) throw new ApiError(409,"Your plans changed in another session. Reload the latest version before saving.","VERSION_CONFLICT");
       try {
         const original=validateWorkspace(applyAccountSettings(plannerSchema.parse(base),policy,user.phoneNumber??"",telegram,telegramProviderId));
@@ -75,8 +77,9 @@ export async function saveWorkspace(userId: string, value: unknown, revision: nu
     // Re-evaluate deferred jobs on the next worker pass when quiet-hour preferences change.
     if(JSON.stringify(decodeWorkspace(current.payload).settings.quietHours)!==JSON.stringify(planner.settings.quietHours))await tx.railJob.updateMany({where:{userId,state:"PENDING",deferredUntil:{not:null}},data:{dueAt:new Date()}});
     const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(planner)),version:{increment:1}}});
-    return {planner,revision:record.version};
-  },{timeout:20000});
+    await syncJourneyIndex(tx,userId,planner,record.version);
+    return {planner:partial?{...planner,journeys:planner.journeys.filter(j=>input.journeys.some(i=>i.id===j.id))}:planner,revision:record.version};
+  },{timeout:60000});
   if(deletedFiles)logger.info("tickets.retention_deleted",{files:deletedFiles});
   return result;
 }

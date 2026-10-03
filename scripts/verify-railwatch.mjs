@@ -1,4 +1,5 @@
 import {verifyResponsive} from "./verify-responsive.mjs";
+import {verifyAccountScale} from "./verify-account-scale.mjs";
 import { chromium,expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { mkdir,readFile } from 'node:fs/promises';
@@ -77,6 +78,7 @@ try{
   await page.screenshot({path:'build/railwatch-qa/dashboard-actionable.png',animations:'disabled'});await nav('My Journeys');await page.getByRole('button',{name:/^History/}).click();await expect(page.getByRole('article').filter({hasText:'Past Booked'})).toHaveCount(1);await page.getByRole('button',{name:/^Archive/}).first().click();await expect(page.getByRole('article').filter({hasText:'Old Cancelled'})).toHaveCount(1);
   const holidayState=(await(await api('/api/railwatch/workspace')).json()).data;let monday=1;while(new Date(dayAhead(monday)+'T00:00:00Z').getUTCDay()!==1)monday++;holidayState.planner.holidays=Array.from({length:20},(_,i)=>({id:'holiday-'+i,name:'Holiday '+i,date:dayAhead(monday+i*7),type:'company'}));assert.equal((await api('/api/railwatch/workspace','put',holidayState)).status(),200);await page.goto(url+'/holidays');
   const holidaysBox=await page.getByRole('heading',{name:'Your Time Off',exact:true}).boundingBox(),opportunitiesBox=await page.getByRole('heading',{name:'Long Weekends Worth A Trip',exact:true}).boundingBox();assert.ok(Math.abs(holidaysBox.y-opportunitiesBox.y)<25,'Long weekends start alongside the holiday list');assert.ok(opportunitiesBox.x>holidaysBox.x,'Long weekends use the second desktop column');await page.screenshot({path:'build/railwatch-qa/holidays-desktop.png',animations:'disabled'});
+  await verifyAccountScale({page,api,url});
   await verifyResponsive({page,api,url,otherApi:(path,method,data)=>probe(b,path,method,data)});
   await nav('Open Profile Menu');await page.getByRole('menuitem',{name:'Sign Out'}).click();await expect(page).toHaveURL(`${url}/login`);assert.equal((await a.request.get(`${url}/api/railwatch/workspace`)).status(),401);
   assert.deepEqual(errors,[]);console.log('Passed: profile editing, password/session rotation, responsive drawer, RailWatch branding, authenticated account app, remote saves, status moves, encrypted ticket persistence across browsers, tenant isolation, attachment ownership, optimistic conflicts, configuration gating, worker authentication, and logout.');
