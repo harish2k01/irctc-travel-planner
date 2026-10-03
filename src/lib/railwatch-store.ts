@@ -72,6 +72,8 @@ export async function saveWorkspace(userId: string, value: unknown, revision: nu
     if (new Set(files.map(f=>f.id)).size !== files.length) throw new ApiError(400,"Each attachment must belong to one journey.");
     const owned=await tx.railFile.findMany({where:{userId,id:{in:files.map(f=>f.id)}},select:{id:true,name:true,type:true,size:true}});
     if(files.some(f=>!owned.some(o=>o.id===f.id&&o.name===f.name&&o.type===f.type&&o.size===f.size)))throw new ApiError(400,"Upload the original ticket files before saving their details.","MISSING_ATTACHMENT");
+    // Re-evaluate deferred jobs on the next worker pass when quiet-hour preferences change.
+    if(JSON.stringify(decodeWorkspace(current.payload).settings.quietHours)!==JSON.stringify(planner.settings.quietHours))await tx.railJob.updateMany({where:{userId,state:"PENDING",deferredUntil:{not:null}},data:{dueAt:new Date()}});
     const record=await tx.railWorkspace.update({where:{userId},data:{payload:encryptSecret(JSON.stringify(planner)),version:{increment:1}}});
     return {planner,revision:record.version};
   },{timeout:20000});

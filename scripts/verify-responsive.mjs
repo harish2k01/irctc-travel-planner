@@ -18,7 +18,7 @@ export async function verifyResponsive({page,api,url,otherApi}) {
     assert.equal((await api('/api/railwatch/workspace','put',state)).status(),200);
     for (const width of [320,390,768,1482]) {
       await page.setViewportSize({width,height:844});
-      for (const path of ['/','/journeys','/calendar','/routines','/holidays','/tickets','/admin','/admin/operations']) {
+      for (const path of ['/','/journeys','/calendar','/routines','/holidays','/tickets','/admin','/admin/operations','/notifications']) {
         await page.goto(url+path);
         await page.getByRole('heading',{level:1}).waitFor();
         await expect(page.locator('[data-theme]')).toHaveAttribute('data-theme',theme);
@@ -73,6 +73,15 @@ export async function verifyResponsive({page,api,url,otherApi}) {
   await expect(dialog.getByText('10:00 AM IST',{exact:false})).toBeVisible();
   await dialog.getByRole('combobox',{name:'Tatkal class',exact:true}).click();await dialog.getByRole('option',{name:'Non-AC — opens at 11 AM',exact:true}).click();await expect(dialog.getByText('11:00 AM IST',{exact:false})).toBeVisible();
   await dialog.getByRole('button',{name:'Close Dialog',exact:true}).click();
+  await page.goto(url+'/journeys');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.evaluate(()=>{window.viewMotionCalls=[];const original=Element.prototype.animate;Element.prototype.animate=function(frames,options){window.viewMotionCalls.push({frames,options});return original.call(this,frames,options);};});
+  await page.getByRole('button',{name:/^History/}).click();
+  await expect.poll(()=>page.evaluate(()=>window.viewMotionCalls.length)).toBeGreaterThan(0);
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.evaluate(()=>{window.viewMotionCalls=[];});
+  await page.getByRole('button',{name:/^Archive \d/}).click();assert.equal(await page.evaluate(()=>window.viewMotionCalls.length),0);
+  await page.emulateMedia({reducedMotion:'no-preference'});
   await page.goto(url+'/');await expect(page.locator('link[rel=manifest]')).toHaveAttribute('href','/manifest.webmanifest');
   const manifest=await(await page.request.get(url+'/manifest.webmanifest')).json();assert.equal(manifest.display,'standalone');
   await page.evaluate(()=>navigator.serviceWorker.ready);

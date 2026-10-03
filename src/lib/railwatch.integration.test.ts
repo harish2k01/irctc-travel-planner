@@ -1,3 +1,4 @@
+import { setJourneySnooze } from "./notification-controls";
 import {createAccountToken,consumeAccountToken} from "./account-tokens";
 import { dismissInAppReminder,recordInAppReminder } from "./in-app-notifications";
 import { beginTelegramLogin,completeTelegramLogin,loginCredentialHash } from "./telegram-login";
@@ -22,8 +23,45 @@ const pushDelivery=vi.hoisted(()=>vi.fn().mockResolvedValue(undefined));
 vi.mock("./browser-push",()=>({sendBrowserPush:pushDelivery}));
 const users:string[]=[];
 async function fixture(){if(!new URL(process.env.DATABASE_URL!).pathname.endsWith("_test"))throw new Error("Use an isolated test database.");await prisma.appSettings.upsert({where:{id:"global"},create:{id:"global"},update:{bookingWindowDays:60,remindersEnabled:true,whatsappEnabled:true}});const u=await prisma.user.create({data:{email:`${randomUUID()}@railwatch.invalid`}});users.push(u.id);return {user:u,...await loadWorkspace(u.id)};}
-afterEach(async()=>{if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
+afterEach(async()=>{vi.useRealTimers();if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
 describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",{timeout:15000},()=>{
+  it("defers external messages during quiet hours while retaining the in-app inbox",async()=>{
+    pushDelivery.mockClear();const now=new Date(`${todayIST()}T04:00:00Z`);vi.useFakeTimers({toFake:["Date"]});vi.setSystemTime(now);const f=await fixture();
+    const journey:Journey={id:"quiet",from:"A",to:"B",date:addDays(todayIST(now),60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
+    await saveWorkspace(f.user.id,{...f.planner,journeys:[journey],settings:{...f.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}],quietHours:{enabled:true,start:"09:00",end:"10:00"}}},f.revision);
+    await prisma.railPush.create({data:{userId:f.user.id,endpointHash:randomUUID(),subscription:encryptSecret("{}")}});
+    await processRailWatch(now);expect(pushDelivery).not.toHaveBeenCalled();
+    expect((await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id,kind:"IN_APP"}})).state).toBe("SENT");
+    const deferred=await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id,kind:"PUSH"}});expect(deferred.attempts).toBe(0);expect(deferred.state).toBe("PENDING");expect(deferred.deferredUntil?.toISOString()).toBe(`${todayIST(now)}T04:30:00.000Z`);
+    const latest=await loadWorkspace(f.user.id,now);await saveWorkspace(f.user.id,{...latest.planner,settings:{...latest.planner.settings,quietHours:{enabled:false,start:"09:00",end:"10:00"}}},latest.revision);
+    expect((await prisma.railJob.findUniqueOrThrow({where:{id:deferred.id}})).dueAt.getTime()).toBe(now.getTime());
+    await processRailWatch(now);expect(pushDelivery).toHaveBeenCalledTimes(1);
+  });
+  it("snoozes across channels without consuming attempts, then delivers once after 24 hours",async()=>{
+    pushDelivery.mockClear();const f=await fixture(),other=await fixture(),now=new Date(`${todayIST()}T04:00:00Z`);
+    const journey:Journey={id:"snoozed",from:"A",to:"B",date:addDays(todayIST(now),60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
+    await saveWorkspace(f.user.id,{...f.planner,journeys:[journey],settings:{...f.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}]}},f.revision);
+    await prisma.railPush.create({data:{userId:f.user.id,endpointHash:randomUUID(),subscription:encryptSecret("{}")}});
+    await expect(setJourneySnooze(other.user.id,journey.id,30,now)).rejects.toThrow("Journey not found");
+    await setJourneySnooze(f.user.id,journey.id,1440,now);await processRailWatch(now);
+    expect(pushDelivery).not.toHaveBeenCalled();expect(await prisma.railJob.count({where:{userId:f.user.id,state:"SENT"}})).toBe(0);
+    await processRailWatch(new Date(now.getTime()+86400000));expect(pushDelivery).toHaveBeenCalledTimes(1);
+    expect(await prisma.railJob.count({where:{userId:f.user.id,state:"SENT"}})).toBe(2);
+    await processRailWatch(new Date(now.getTime()+86401000));expect(pushDelivery).toHaveBeenCalledTimes(1);
+  });
+  it("resumes deferred jobs without deleting history and rejects snoozing a booked journey",async()=>{
+    const f=await fixture(),now=new Date(`${todayIST()}T04:00:00Z`);
+    const journey:Journey={id:"resume",from:"A",to:"B",date:addDays(todayIST(now),60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};
+    await saveWorkspace(f.user.id,{...f.planner,journeys:[journey],settings:{...f.planner.settings,bookingSchedule:[{daysBefore:0,time:"08:00"}]}},f.revision);
+    await setJourneySnooze(f.user.id,journey.id,60,now);await processRailWatch(now);
+    await setJourneySnooze(f.user.id,journey.id,30,new Date(now.getTime()+5*60000));
+    expect((await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id}})).dueAt.getTime()).toBe(now.getTime()+35*60000);
+    await setJourneySnooze(f.user.id,journey.id,0,now);await processRailWatch(now);
+    expect((await prisma.railJob.findFirstOrThrow({where:{userId:f.user.id}})).state).toBe("SENT");
+    const latest=await loadWorkspace(f.user.id);await saveWorkspace(f.user.id,{...latest.planner,journeys:[{...journey,status:"booked"}]},latest.revision);
+    await expect(setJourneySnooze(f.user.id,journey.id,30,now)).rejects.toThrow("no longer needs");
+    expect(await prisma.railReminderPause.count({where:{userId:f.user.id}})).toBe(0);
+  });
   it("persists successful and failed scheduler outcomes across callers",async()=>{
     const before=await prisma.railOperations.findUnique({where:{id:"scheduler"}});
     await expect(runWithHeartbeat(async()=>{throw new Error("private-provider-detail");})).rejects.toThrow("private-provider-detail");

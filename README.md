@@ -29,7 +29,7 @@ Scheduled work runs inside the persistent backend. Once a minute it completes bo
 
 [Booking and cancellation reminders](docs/booking-reminders.md) explains normal/Tatkal dates, custom reminder schedules, cancellation follow-ups, and device notifications.
 
-The dashboard is at `/`; journeys, calendar, routines, holidays, tickets, and admin pages have their own routes. User Settings manages profile details, phone number, preferences, connections, and passwords. Admin Settings contains General, Integrations, and User Management. Administrators control shared booking rules and features, configure encrypted Telegram/Google/WhatsApp credentials in the app, create or invite users, and manage roles and access. Each account has a private workspace.
+The dashboard is at `/`; journeys, calendar, routines, holidays, tickets, and admin pages have their own routes. User Settings manages profile details, phone number, preferences, connections, and passwords. Admin Settings contains General, Integrations, and User Management. Administrators control shared booking rules and features, configure encrypted Telegram/Google/WhatsApp credentials in the app, create or invite users, and manage roles and access. Each account has a private workspace. The notification bell links to paginated delivery history with snooze/resume controls; optional quiet hours are configured under Preferences. See [notification controls](docs/notification-controls.md).
 
 Set `APP_URL` to the public base URL at runtime so invitation links, password resets, and Google OAuth use the deployed hostname. The first account becomes administrator. Existing RailWatch installations can apply the checked-in Prisma migrations; a fresh installation starts with an empty database.
 
