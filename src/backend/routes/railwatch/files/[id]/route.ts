@@ -1,9 +1,9 @@
+import {storedPlanner} from "@/lib/workspace-storage";
 import { getFeaturePolicy } from "@/lib/settings";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptSecret,decryptSecret } from "@/lib/crypto";
 import { ApiError,assertSameOrigin,jsonData,routeError,noStoreHeaders } from "@/lib/http";
-import { decodeWorkspace } from "@/lib/railwatch-store";
 import { attachmentSchema } from "@/lib/travel-planner";
 type Context={params:Promise<{id:string}>};
 const MAX=10485760;
@@ -27,4 +27,4 @@ export async function PUT(request:Request,context:Context){try{
   });return jsonData(meta);
 }catch(e){return routeError(e,request);}}
 /** Deletes an unlinked original after checking account ownership and workspace references. */
-export async function DELETE(request:Request,context:Context){try{assertSameOrigin(request);const user=await requireUser();const {id}=await context.params;await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;const workspace=await tx.railWorkspace.findUnique({where:{userId:user.id}});if(workspace&&decodeWorkspace(workspace.payload).journeys.some(j=>j.attachments?.some(f=>f.id===id)))throw new ApiError(409,"Remove this attachment from its journey before deleting the original.");await tx.railFile.deleteMany({where:{userId:user.id,id}});});return jsonData({deleted:true});}catch(e){return routeError(e,request);}}
+export async function DELETE(request:Request,context:Context){try{assertSameOrigin(request);const user=await requireUser();const {id}=await context.params;await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id} FOR UPDATE`;const workspace=await tx.railWorkspace.findUnique({where:{userId:user.id}});if(workspace&&(workspace.storageVersion===2?Boolean((await tx.railFile.findFirst({where:{userId:user.id,id},select:{journeyId:true}}))?.journeyId):(await storedPlanner(tx,user.id,workspace)).journeys.some(j=>j.attachments?.some(f=>f.id===id))))throw new ApiError(409,"Remove this attachment from its journey before deleting the original.");await tx.railFile.deleteMany({where:{userId:user.id,id}});});return jsonData({deleted:true});}catch(e){return routeError(e,request);}}

@@ -136,6 +136,8 @@ model RailTelegram {
 }
 
 model RailWorkspace {
+  storageVersion Int @default(1)
+  planGeneration Int @default(0)
   listVersion Int @default(0)
   listPayload String @default("")
   listDay String @default("")
@@ -147,6 +149,7 @@ model RailWorkspace {
 }
 
 model RailFile {
+  journeyId String?
   id        String
   userId    String
   name      String
@@ -161,6 +164,7 @@ model RailFile {
 }
 
 model RailJob {
+  planGeneration Int?
   id         String    @id @default(cuid())
   userId     String
   key        String
@@ -209,6 +213,7 @@ model RailPushConfig {
 
 // Shared scheduler health survives pod restarts and is readable by both replicas.
 model RailOperations {
+  accountCursor String?
   id String @id
   startedAt DateTime?
   succeededAt DateTime?

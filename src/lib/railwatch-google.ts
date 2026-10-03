@@ -1,9 +1,10 @@
+import {storedPlanner} from "./workspace-storage";
 import {logger} from "./logger";
 import { createHash,randomUUID } from "node:crypto";
 import { prisma } from "./db";
 import { decryptSecret,encryptSecret } from "./crypto";
 import { getFeaturePolicy } from "./settings";
-import { applyAccountSettings,decodeWorkspace } from "./railwatch-store";
+import { applyAccountSettings } from "./railwatch-store";
 import { addDays,bookingDay,bookingClock,scheduledReminders,type Planner } from "./travel-planner";
 import { getProviderConfiguration,googleConfigured } from "./provider-config";
 /** Checks instance configuration before Google connection or synchronization. */
@@ -38,7 +39,7 @@ export async function syncGoogleCalendars(){
       if(connection.calendarId&&!connection.lastError&&tokens.workspaceVersion===workspace.version)continue;
       if(!tokens.access_token||tokens.expiresAt<Date.now()+60000){const response=await fetch("https://oauth2.googleapis.com/token",{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams({client_id:google.clientId,client_secret:google.clientSecret,refresh_token:tokens.refresh_token,grant_type:"refresh_token"}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw new Error("Reconnect Google Calendar to renew access.");const fresh=await response.json();tokens={...tokens,...fresh,expiresAt:Date.now()+fresh.expires_in*1000};await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{tokens:encryptSecret(JSON.stringify(tokens))}});}
       let calendarId=connection.calendarId;if(!calendarId){const calendar=await googleFetch(tokens.access_token,"/calendars",{method:"POST",body:JSON.stringify({summary:"RailWatch",description:"Train journeys, booking reminders, and time off managed by RailWatch.",timeZone:"Asia/Kolkata"})});calendarId=String(calendar.id);await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{calendarId}});}
-      const base=`/calendars/${encodeURIComponent(calendarId!)}/events`;const user=await prisma.user.findUniqueOrThrow({where:{id:connection.userId}});const events=googleEvents(applyAccountSettings(decodeWorkspace(workspace.payload),policy,user.phoneNumber??""));
+      const base=`/calendars/${encodeURIComponent(calendarId!)}/events`;const user=await prisma.user.findUniqueOrThrow({where:{id:connection.userId}});const events=googleEvents(applyAccountSettings(await storedPlanner(prisma,connection.userId,workspace),policy,user.phoneNumber??""));
       // Persist ownership before network writes. A partial sync can then be reconciled on retry.
       const owned=[...new Set([...connection.eventIds,...events.map(e=>e.id)])];await prisma.railGoogle.updateMany({where:{userId:connection.userId,lease},data:{eventIds:owned}});
       tokens.eventHashes??={};let changes=0;
