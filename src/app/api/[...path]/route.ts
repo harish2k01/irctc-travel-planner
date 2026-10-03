@@ -8,7 +8,17 @@ async function proxy(request: Request) {
   let status=503;
   try {
     const incoming = new URL(request.url);
-    const url = new URL(incoming.pathname + incoming.search, process.env.BACKEND_URL ?? "http://127.0.0.1:3001");
+    // Set path and query separately: resolving a client path against a base URL
+    // would let a leading // replace the private backend's host.
+    const url = new URL(process.env.BACKEND_URL ?? "http://127.0.0.1:3001");
+    if (!incoming.pathname.startsWith("/api/") || incoming.pathname.includes("\\") ||
+        !["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+      status = 400;
+      return Response.json({ error: { code: "INVALID_API_PATH", message: "Invalid API request." } }, { status });
+    }
+    url.pathname = incoming.pathname;
+    url.search = incoming.search;
+    url.hash = "";
     const headers = new Headers(request.headers);
     headers.set("x-request-id",requestId);
     for (const name of ["host", "connection", "transfer-encoding", "content-length", "x-forwarded-host", "x-forwarded-proto"]) headers.delete(name);
