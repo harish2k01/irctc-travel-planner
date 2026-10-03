@@ -43,6 +43,11 @@ export async function verifyResponsive({page,api,url,otherApi}) {
         const drawer=page.getByRole('dialog',{name:'User Settings',exact:true});
         const bounds=await drawer.boundingBox();for(const tab of await drawer.getByRole('tab').all()){const box=await tab.boundingBox();assert.ok(box.x>=bounds.x&&box.x+box.width<=bounds.x+bounds.width+1,'Settings tabs fit phone');}
         await drawer.getByRole('button',{name:'Close User Settings',exact:true}).click();
+        await page.goto(url+'/journeys');await page.getByRole('region',{name:'Booked column',exact:true}).getByRole('button',{name:/Open journey/}).first().click();
+        const summary=page.getByRole('dialog');await expect(summary.getByRole('button',{name:'Edit Journey',exact:true})).toBeVisible();await expect(summary.getByRole('textbox')).toHaveCount(0);await summary.getByRole('button',{name:'Close Dialog',exact:true}).click();
+        await page.getByRole('button',{name:'Open Profile Menu'}).click();await page.getByRole('menuitem',{name:'User Settings'}).click();await drawer.getByRole('tab',{name:'Preferences',exact:true}).click();await expect(drawer.getByRole('heading',{name:'Normal Booking Reminders'})).toBeVisible();
+        assert.ok(await drawer.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'Custom reminder controls fit mobile');await drawer.getByRole('button',{name:'Close User Settings',exact:true}).click();
+
         await page.getByRole('button',{name:/^Notifications/}).click();
         const inbox=page.getByRole('region',{name:'Notifications',exact:true});
         const panel=await inbox.boundingBox();assert.ok(panel.x>=0&&panel.x+panel.width<=width,'Notification inbox fits phone');
@@ -55,13 +60,19 @@ export async function verifyResponsive({page,api,url,otherApi}) {
   await page.setViewportSize({width:1482,height:876});
   const state=(await(await api('/api/railwatch/workspace')).json()).data;state.planner.settings.theme='light';assert.equal((await api('/api/railwatch/workspace','put',state)).status(),200);
   await page.goto(url+'/journeys');await page.getByRole('region',{name:'Booked column',exact:true}).getByRole('button',{name:/Open journey/}).first().click();
-  const dialog=page.getByRole('dialog');await expect(dialog.getByRole('button',{name:'Edit Journey',exact:true})).toBeVisible();await expect(dialog.getByRole('textbox')).toHaveCount(0);
-  assert.ok((await dialog.boundingBox()).width<=700,'Desktop summary stays compact');
+  const dialog=page.getByRole('dialog');await expect(dialog.getByRole('button',{name:'Edit Journey',exact:true})).toHaveCount(0);await expect(dialog.getByLabel('Notes',{exact:true})).toBeVisible();
+  assert.ok((await dialog.boundingBox()).width>1000,'Desktop journey opens directly in editor');
   assert.equal(await page.evaluate(()=>getComputedStyle(document.documentElement).overflow),'hidden','Dialog owns scrolling');
-  await dialog.getByRole('button',{name:'Edit Journey',exact:true}).click();await dialog.getByLabel('Notes',{exact:true}).fill('Discard guard test');
+  await dialog.getByLabel('Notes',{exact:true}).fill('Discard guard test');
   page.removeAllListeners('dialog');let warned=false;page.on('dialog',async d=>{warned=true;await d.dismiss();});
   await dialog.getByRole('button',{name:'Close Dialog',exact:true}).click();assert.equal(warned,true);await expect(dialog).toBeVisible();
   page.removeAllListeners('dialog');page.on('dialog',d=>d.accept());await dialog.getByRole('button',{name:'Close Dialog',exact:true}).click();await expect(dialog).toHaveCount(0);
+
+  await page.getByRole('button',{name:'New Journey',exact:true}).click();
+  await dialog.getByRole('combobox',{name:'Booking type',exact:true}).click();await dialog.getByRole('option',{name:'Tatkal',exact:true}).click();
+  await expect(dialog.getByText('10:00 AM IST',{exact:false})).toBeVisible();
+  await dialog.getByRole('combobox',{name:'Tatkal class',exact:true}).click();await dialog.getByRole('option',{name:'Non-AC — opens at 11 AM',exact:true}).click();await expect(dialog.getByText('11:00 AM IST',{exact:false})).toBeVisible();
+  await dialog.getByRole('button',{name:'Close Dialog',exact:true}).click();
   await page.goto(url+'/');await expect(page.locator('link[rel=manifest]')).toHaveAttribute('href','/manifest.webmanifest');
   const manifest=await(await page.request.get(url+'/manifest.webmanifest')).json();assert.equal(manifest.display,'standalone');
   await page.evaluate(()=>navigator.serviceWorker.ready);

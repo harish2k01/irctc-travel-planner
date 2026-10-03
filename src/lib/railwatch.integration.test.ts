@@ -22,6 +22,18 @@ const users:string[]=[];
 async function fixture(){if(!new URL(process.env.DATABASE_URL!).pathname.endsWith("_test"))throw new Error("Use an isolated test database.");await prisma.appSettings.upsert({where:{id:"global"},create:{id:"global"},update:{bookingWindowDays:60,remindersEnabled:true,whatsappEnabled:true}});const u=await prisma.user.create({data:{email:`${randomUUID()}@railwatch.invalid`}});users.push(u.id);return {user:u,...await loadWorkspace(u.id)};}
 afterEach(async()=>{if(users.length)await prisma.user.deleteMany({where:{id:{in:users.splice(0)}}});});
 describe.skipIf(process.env.RUN_DB_TESTS!=="1")("account-backed RailWatch",()=>{
+  it("leases cancellation alerts once per device and stops queued follow-ups after cancellation",async()=>{
+    pushDelivery.mockClear();const f=await fixture(),now=new Date(`${todayIST()}T05:00:00Z`);
+    const journey:Journey={id:"cancel-follow-up",from:"A",to:"B",date:addDays(todayIST(now),3),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"cancellation_needed",notes:""};
+    await saveWorkspace(f.user.id,{...f.planner,journeys:[journey]},f.revision);
+    await prisma.railPush.create({data:{userId:f.user.id,endpointHash:randomUUID(),subscription:encryptSecret("{}")}});
+    await Promise.all([processRailWatch(now),processRailWatch(now)]);
+    expect(pushDelivery).toHaveBeenCalledTimes(1);expect(pushDelivery).toHaveBeenCalledWith(f.user.id,expect.any(String),expect.stringContaining("Cancel your ticket"),"railwatch-journey-cancel-follow-up");
+    await prisma.railJob.updateMany({where:{userId:f.user.id,kind:"PUSH"},data:{state:"PENDING"}});
+    const latest=await loadWorkspace(f.user.id);await saveWorkspace(f.user.id,{...latest.planner,journeys:[{...journey,status:"cancelled"}]},latest.revision);
+    await processRailWatch(now);expect(pushDelivery).toHaveBeenCalledTimes(1);
+    expect(await prisma.railJob.count({where:{userId:f.user.id,kind:"PUSH",state:"CANCELLED"}})).toBe(1);
+  });
   it("leases each opted-in device once and cancels reminders when a journey is booked",async()=>{
     pushDelivery.mockClear();const f=await fixture(),now=new Date(`${todayIST()}T03:00:00Z`);
     const journey:Journey={id:"push-journey",from:"A",to:"B",date:addDays(todayIST(now),60),departure:"20:00",train:"",pnr:"",travelClass:"",windowDays:60,originOffset:0,status:"needs_booking",notes:""};

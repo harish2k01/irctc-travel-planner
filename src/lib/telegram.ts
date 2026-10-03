@@ -10,7 +10,12 @@ export const /** Hashes a Telegram chat identifier without persisting its raw va
 /** Makes a bounded Telegram Bot API request without logging bot tokens or raw messages. */
 export async function telegramRequest<T>(token:string,method:"getMe"|"deleteWebhook"|"getUpdates"|"sendMessage",body:object={}):Promise<T>{
  let response:Response;try{response=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:"POST",redirect:"error",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});}catch{throw new ApiError(502,"Telegram could not be reached. Try again.","TELEGRAM_UNAVAILABLE");}
- const data=await response.json().catch(()=>null);if(!response.ok||!data?.ok)throw new ApiError(502,"Telegram rejected the request. Check the bot token and connection.","TELEGRAM_REJECTED");return data.result as T;
+ const data=await response.json().catch(()=>null);
+ if(!response.ok||!data?.ok){
+  const status=Number(data?.error_code??response.status);
+  throw new ApiError(502,status===409?"Another application is reading this bot’s messages. Use a dedicated bot for RailWatch.":status===401?"Telegram rejected the bot token. Update it from BotFather.":status===429?"Telegram is temporarily limiting requests. RailWatch will retry automatically.":"Telegram rejected the request. Try again shortly.",`TELEGRAM_${status}`);
+ }
+ return data.result as T;
 }
 /** Sends a booking reminder to an already-linked account chat. */
 export async function sendTelegram(chatId:string,message:string,providerId:string,url?:string){const config=await getProviderConfiguration();if(!telegramConfigured(config)||config.telegram?.id!==providerId)throw new ApiError(409,"Reconnect Telegram before sending reminders.");const result=await telegramRequest<{message_id:number}>(config.telegram.botToken,"sendMessage",{chat_id:chatId,text:message,...(url&&/^https:\/\//.test(url)?{reply_markup:{inline_keyboard:[[{text:"Open RailWatch",url}]]}}:{}),link_preview_options:{is_disabled:true}});if(!Number.isSafeInteger(result.message_id))throw new ApiError(502,"Telegram did not confirm the message.");return String(result.message_id);}

@@ -12,19 +12,18 @@ import { sendBookingEmail } from "./mail";
 import { getDeliveryConfiguration } from "./settings";
 import { getFeaturePolicy } from "./settings";
 import { applyAccountSettings,decodeWorkspace,loadWorkspace } from "./railwatch-store";
-import { effectiveReminders,reminderPreview,todayIST,formatDay,bookingDay,type Planner } from "./travel-planner";
+import { scheduledReminders,bookingTimeLabel,todayIST,formatDay,bookingDay,type Planner } from "./travel-planner";
 import { sendWhatsApp,whatsappReady } from "./railwatch-providers";
 import { syncGoogleCalendars } from "./railwatch-google";
 /** Builds durable reminder identities and due times from active journey preferences. */
 export function reminderJobs(planner:Planner,now:Date,emailRecipient?:string,deviceIds:string[]=[]){
   const result:{key:string;kind:string;dueAt:Date;journeyId:string;message:string;deviceId?:string}[]=[];
-  for(const j of planner.journeys){if(j.archivedAt||j.status!=="needs_booking"||j.date<todayIST(now))continue;
-    const pref=effectiveReminders(planner,j);
-    for(const time of reminderPreview(j,pref.times,pref.clock)){const dueAt=new Date(time);if(dueAt.getTime()<now.getTime()-86400000)continue;
-      const message=`Book your train from ${j.from} to ${j.to} for ${formatDay(j.date,{day:"numeric",month:"long",year:"numeric"})}. Booking opens ${formatDay(bookingDay(j))} at 8:00 AM IST.`;
+  for(const j of planner.journeys){if(j.archivedAt||!["needs_booking","cancellation_needed"].includes(j.status)||j.date<todayIST(now))continue;
+    for(const time of scheduledReminders(planner,j,now)){const dueAt=new Date(time);if(dueAt.getTime()<now.getTime()-86400000)continue;
+      const message=j.status==="cancellation_needed"?`Cancel your ticket from ${j.from} to ${j.to} for ${formatDay(j.date,{day:"numeric",month:"long",year:"numeric"})} through IRCTC, then confirm cancellation in RailWatch.`:`Book your train from ${j.from} to ${j.to} for ${formatDay(j.date,{day:"numeric",month:"long",year:"numeric"})}. Booking opens ${formatDay(bookingDay(j))} at ${bookingTimeLabel(j)}.`;
       for(const channel of [...deviceIds.map(id=>"PUSH:"+id),"IN_APP",...(planner.settings.emailEnabled&&emailRecipient?["EMAIL"]:[]),...(planner.settings.whatsappEnabled?["WHATSAPP"]:[]),...(planner.settings.telegramEnabled?["TELEGRAM"]:[])]){
         const kind=channel.startsWith("PUSH:")?"PUSH":channel,deviceId=kind==="PUSH"?channel.slice(5):undefined;
-        const identity=JSON.stringify([j.id,j.from,j.to,j.date,time,kind,kind==="PUSH"?deviceId:kind==="EMAIL"?emailRecipient:kind==="WHATSAPP"?planner.settings.whatsappNumber:kind==="TELEGRAM"?[planner.settings.telegramProviderId,planner.settings.telegramChatId]:""]);
+        const identity=JSON.stringify([j.status==="cancellation_needed"?`${j.id}:cancel`:j.id,j.from,j.to,j.date,time,kind,kind==="PUSH"?deviceId:kind==="EMAIL"?emailRecipient:kind==="WHATSAPP"?planner.settings.whatsappNumber:kind==="TELEGRAM"?[planner.settings.telegramProviderId,planner.settings.telegramChatId]:""]);
         result.push({key:createHash("sha256").update(identity).digest("hex"),kind,dueAt,journeyId:j.id,message,deviceId});
       }
     }
@@ -39,7 +38,7 @@ export async function processRailWatch(now=new Date()){
     await prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;const current=await tx.railWorkspace.findUniqueOrThrow({where:{userId}});const owner=await tx.user.findUniqueOrThrow({where:{id:userId}});const effective=applyAccountSettings(decodeWorkspace(current.payload),policy,owner.phoneNumber??"",await tx.railTelegram.findUnique({where:{userId}}),telegramProviderId);const actual=policy.remindersEnabled?reminderJobs(effective,now,owner.emailVerifiedAt?owner.email:undefined,deviceIds).filter(j=>(j.kind!=="WHATSAPP"||policy.whatsappEnabled)&&(j.kind!=="TELEGRAM"||policy.telegramEnabled)):[];
       await tx.railJob.updateMany({where:{userId,state:{in:["PENDING","FAILED"]},key:{notIn:actual.map(j=>j.key)}},data:{state:"CANCELLED",lease:null,leaseUntil:null}});
       await tx.railJob.updateMany({where:{userId,state:"CANCELLED",key:{in:actual.map(j=>j.key)}},data:{state:"PENDING",attempts:0,lastError:null,lease:null,leaseUntil:null}});
-      await tx.railJob.createMany({data:jobs.filter(j=>actual.some(a=>a.key===j.key)).map(({key,kind,dueAt,message,journeyId})=>({userId,key,kind,dueAt,payload:encryptSecret(JSON.stringify({message,journeyId}))})),skipDuplicates:true});
+      await tx.railJob.createMany({data:jobs.filter(j=>actual.some(a=>a.key===j.key)).map(({key,kind,dueAt,message,journeyId})=>({userId,key,kind,dueAt,payload:encryptSecret(JSON.stringify({message,journeyId,reminderType:message.startsWith("Cancel your ticket")?"cancellation":"booking"}))})),skipDuplicates:true});
     });
   }
   const available={dueAt:{lte:now},attempts:{lt:5},OR:[{state:"PENDING"},{state:"FAILED"},{state:"SENDING",leaseUntil:{lt:now}}]};
@@ -51,7 +50,7 @@ export async function processRailWatch(now=new Date()){
       if(!actual){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"CANCELLED",lease:null,leaseUntil:null}});continue;}
       if(job.kind==="WHATSAPP"&&!await whatsappReady()){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"PENDING",attempts:{decrement:1},dueAt:new Date(now.getTime()+300000),lastError:"WhatsApp setup is incomplete.",lease:null,leaseUntil:null}});continue;}
       if(job.kind==="EMAIL"&&!(await getDeliveryConfiguration()).smtpUrl){await prisma.railJob.updateMany({where:{id:job.id,lease},data:{state:"PENDING",attempts:{decrement:1},dueAt:new Date(now.getTime()+300000),lastError:"Email setup is incomplete.",lease:null,leaseUntil:null}});continue;}
-      if(job.kind==="IN_APP"){if(await recordInAppReminder({id:job.id,userId:job.userId,lease,journeyId:actual.journeyId,dueAt:actual.dueAt},now))sent++;continue;}
+      if(job.kind==="IN_APP"){if(await recordInAppReminder({id:job.id,userId:job.userId,lease,journeyId:actual.journeyId,dueAt:actual.dueAt,reminderType:actual.message.startsWith("Cancel your ticket")?"cancellation":"booking"},now))sent++;continue;}
       const journey=planner!.journeys.find(j=>j.id===actual.journeyId)!;
       if(job.kind==="PUSH")await sendBrowserPush(job.userId,actual.deviceId!,actual.message,"railwatch-journey-"+actual.journeyId);
       if(job.kind==="EMAIL"){const result=await sendBookingEmail(workspace!.user.email,journey);if(!result.sent)throw new Error("Email setup is incomplete.");}
